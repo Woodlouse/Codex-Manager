@@ -35,6 +35,13 @@ impl Drop for EnvGuard {
 static RPC_TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 static RPC_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
 
+fn register_db_test_dsn() -> Option<String> {
+    std::env::var("CODEXMANAGER_REGISTER_DB_URL_TEST")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn lock_rpc_test_env() -> MutexGuard<'static, ()> {
     // 中文注释：RPC 集成测试依赖进程级环境变量，串行化可避免不同用例互相污染数据库路径。
     RPC_TEST_ENV_LOCK
@@ -145,14 +152,27 @@ fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
 }
 
 #[test]
+fn register_db_test_dsn_requires_explicit_env() {
+    let _guard = EnvGuard::set("CODEXMANAGER_REGISTER_DB_URL_TEST", "");
+    assert!(register_db_test_dsn().is_none());
+}
+
+#[test]
+fn register_db_test_dsn_trims_value() {
+    let _guard = EnvGuard::set("CODEXMANAGER_REGISTER_DB_URL_TEST", "  postgres://test ");
+    assert_eq!(
+        register_db_test_dsn().as_deref(),
+        Some("postgres://test")
+    );
+}
+
+#[test]
 fn clear_register_db_deletes_rows() {
     let _ctx = RpcTestContext::new("rpc-clear-register-db");
-    let base_dsn = std::env::var("CODEXMANAGER_REGISTER_DB_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .unwrap_or_else(|_| {
-            "postgres://codexmanager:codexmanager@localhost:5433/codexmanager?sslmode=disable"
-                .to_string()
-        });
+    let Some(base_dsn) = register_db_test_dsn() else {
+        eprintln!("SKIP: set CODEXMANAGER_REGISTER_DB_URL_TEST to run clear_register_db_deletes_rows");
+        return;
+    };
     let _db_guard = EnvGuard::set("CODEXMANAGER_REGISTER_DB_URL", &base_dsn);
 
     let mut client = Client::connect(&base_dsn, NoTls).expect("connect register db");
