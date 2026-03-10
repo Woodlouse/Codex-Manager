@@ -94,8 +94,9 @@ docker compose up --build
 - 入口页：`http://localhost:8080`
 - CodexManager：`http://localhost:48761`
 - Auto Register（Go 版）：`http://localhost:8899`
-- Account Hub：`http://localhost:48800`
 - Postgres：`localhost:5433`（db/user/password 均为 `codexmanager`）
+
+Account Hub 已迁移到 `free-codex` 仓库统一编排。
 
 如需 IMAP 配置，将 `config.json` 挂载到容器内 `/app/config.json`。
 Auto Register 结果默认写入 Postgres（可通过 `RESULTS_STORE`/`DATABASE_URL` 覆盖）。

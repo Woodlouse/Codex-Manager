@@ -3,8 +3,7 @@ members = [
   "crates/core",
   "crates/service",
   "crates/start",
-  "crates/web",
-  "crates/hub"
+  "crates/web"
 ]
 exclude = [
   "apps/src-tauri"
@@ -13,5 +12,4 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.6"
-
 

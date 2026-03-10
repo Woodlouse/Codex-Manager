@@ -92,8 +92,9 @@ docker compose up --build
 - Entry: `http://localhost:8080`
 - CodexManager: `http://localhost:48761/`
 - Auto Register (Go): `http://localhost:8899/`
-- Account Hub: `http://localhost:48800`
 - Postgres: `localhost:5433` (db/user/password: `codexmanager`)
+
+Account Hub has been moved to the `free-codex` repo for unified orchestration.
 
 To provide IMAP config, mount `config.json` to `/app/config.json` in the container.
 Auto Register results are stored in Postgres by default (override via `RESULTS_STORE`/`DATABASE_URL`).
