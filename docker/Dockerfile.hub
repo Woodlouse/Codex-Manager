@@ -6,10 +6,13 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
 ARG CARGO_BUILD_FLAGS=--release
+ARG CARGO_BIN_DIR=release
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    cargo build -p codexmanager-hub ${CARGO_BUILD_FLAGS}
+    cargo build -p codexmanager-hub ${CARGO_BUILD_FLAGS} && \
+    mkdir -p /out && \
+    install -m 755 /src/target/${CARGO_BIN_DIR}/codexmanager-hub /out/codexmanager-hub
 
 FROM debian:bookworm-slim
 
@@ -34,7 +37,7 @@ RUN set -e; \
     apt-get install -y --no-install-recommends ca-certificates; \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/target/${CARGO_BIN_DIR}/codexmanager-hub /usr/local/bin/codexmanager-hub
+COPY --from=builder /out/codexmanager-hub /usr/local/bin/codexmanager-hub
 
 ENV HUB_ADDR=0.0.0.0:48800
 ENV CODEXMANAGER_SERVICE_ADDR=codexmanager-service:48760

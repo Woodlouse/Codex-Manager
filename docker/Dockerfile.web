@@ -25,10 +25,13 @@ COPY crates ./crates
 COPY --from=ui /src/apps/dist ./apps/dist
 
 ARG CARGO_BUILD_FLAGS=--release
+ARG CARGO_BIN_DIR=release
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    cargo build -p codexmanager-web --features embedded-ui ${CARGO_BUILD_FLAGS}
+    cargo build -p codexmanager-web --features embedded-ui ${CARGO_BUILD_FLAGS} && \
+    mkdir -p /out && \
+    install -m 755 /src/target/${CARGO_BIN_DIR}/codexmanager-web /out/codexmanager-web
 
 FROM debian:bookworm-slim
 
@@ -53,7 +56,7 @@ RUN set -e; \
     apt-get install -y --no-install-recommends ca-certificates; \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/target/${CARGO_BIN_DIR}/codexmanager-web /usr/local/bin/codexmanager-web
+COPY --from=builder /out/codexmanager-web /usr/local/bin/codexmanager-web
 
 ENV CODEXMANAGER_WEB_ADDR=0.0.0.0:48761
 ENV CODEXMANAGER_WEB_NO_SPAWN_SERVICE=1
