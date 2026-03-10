@@ -28,6 +28,11 @@ pub(crate) struct AccountImportResult {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct RegisterDbClearResult {
+    deleted: usize,
+}
+
+#[derive(Debug, Serialize)]
 struct AccountImportError {
     index: usize,
     message: String,
@@ -114,6 +119,19 @@ pub(crate) fn import_account_auth_register_db() -> Result<AccountImportResult, S
         items.push(value);
     }
     import_account_auth_values_with_storage(&storage, items)
+}
+
+pub(crate) fn clear_account_auth_register_db() -> Result<RegisterDbClearResult, String> {
+    let dsn = resolve_register_db_url()
+        .ok_or_else(|| "CODEXMANAGER_REGISTER_DB_URL/DATABASE_URL not set".to_string())?;
+    let mut client =
+        Client::connect(&dsn, NoTls).map_err(|err| format!("connect register db failed: {err}"))?;
+    let deleted = client
+        .execute("DELETE FROM registration_results", &[])
+        .map_err(|err| format!("clear register db failed: {err}"))?;
+    Ok(RegisterDbClearResult {
+        deleted: deleted as usize,
+    })
 }
 
 pub(crate) fn import_account_auth_values_with_storage(

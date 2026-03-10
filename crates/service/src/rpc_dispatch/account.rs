@@ -77,6 +77,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/importFromRegisterDb" => {
             super::value_or_error(account_import::import_account_auth_register_db())
         }
+        "account/clearRegisterDb" => {
+            super::value_or_error(account_import::clear_account_auth_register_db())
+        }
         "account/export" => {
             let output_dir = super::str_param(req, "outputDir").unwrap_or("");
             super::value_or_error(account_export::export_accounts_to_directory(output_dir))

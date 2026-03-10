@@ -1,5 +1,7 @@
 use codexmanager_core::rpc::types::JsonRpcRequest;
 use codexmanager_core::storage::{now_ts, Account, Storage, UsageSnapshotRecord};
+use postgres::{Client, NoTls};
+use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -140,6 +142,72 @@ fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
     );
     assert_eq!(status, 200, "unexpected status {status}: {body}");
     serde_json::from_str(&body).expect("parse response")
+}
+
+#[test]
+fn clear_register_db_deletes_rows() {
+    let _ctx = RpcTestContext::new("rpc-clear-register-db");
+    let base_dsn = std::env::var("CODEXMANAGER_REGISTER_DB_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+        .unwrap_or_else(|_| {
+            "postgres://codexmanager:codexmanager@localhost:5433/codexmanager?sslmode=disable"
+                .to_string()
+        });
+    let _db_guard = EnvGuard::set("CODEXMANAGER_REGISTER_DB_URL", &base_dsn);
+
+    let mut client = Client::connect(&base_dsn, NoTls).expect("connect register db");
+    client
+        .batch_execute(
+            "CREATE TABLE IF NOT EXISTS registration_results (\n\
+                id BIGSERIAL PRIMARY KEY,\n\
+                email TEXT NOT NULL,\n\
+                email_key TEXT NOT NULL,\n\
+                result JSONB NOT NULL,\n\
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n\
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n\
+            );\n\
+            CREATE UNIQUE INDEX IF NOT EXISTS registration_results_email_key_idx\n\
+              ON registration_results (email_key);",
+        )
+        .expect("ensure schema");
+    client
+        .execute("DELETE FROM registration_results", &[])
+        .expect("clear before seed");
+    let payload = json!({ "ok": true });
+    client
+        .execute(
+            "INSERT INTO registration_results (email, email_key, result)\n\
+             VALUES ($1, $2, $3)",
+            &[&"a@example.com", &"a@example.com", &payload],
+        )
+        .expect("insert 1");
+    client
+        .execute(
+            "INSERT INTO registration_results (email, email_key, result)\n\
+             VALUES ($1, $2, $3)",
+            &[&"b@example.com", &"b@example.com", &payload],
+        )
+        .expect("insert 2");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 10,
+        method: "account/clearRegisterDb".to_string(),
+        params: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    assert_eq!(
+        result.get("deleted").and_then(|value| value.as_u64()),
+        Some(2)
+    );
+
+    let remaining: i64 = client
+        .query_one("SELECT COUNT(1) FROM registration_results", &[])
+        .expect("count rows")
+        .get(0);
+    assert_eq!(remaining, 0, "expected cleared register db");
 }
 
 #[test]
