@@ -153,12 +153,14 @@ fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
 
 #[test]
 fn register_db_test_dsn_requires_explicit_env() {
+    let _lock = lock_rpc_test_env();
     let _guard = EnvGuard::set("CODEXMANAGER_REGISTER_DB_URL_TEST", "");
     assert!(register_db_test_dsn().is_none());
 }
 
 #[test]
 fn register_db_test_dsn_trims_value() {
+    let _lock = lock_rpc_test_env();
     let _guard = EnvGuard::set("CODEXMANAGER_REGISTER_DB_URL_TEST", "  postgres://test ");
     assert_eq!(
         register_db_test_dsn().as_deref(),
