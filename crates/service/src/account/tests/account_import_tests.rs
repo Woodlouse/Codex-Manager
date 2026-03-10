@@ -132,3 +132,31 @@ fn extract_token_payload_supports_camel_case_fields() {
     assert_eq!(payload.refresh_token, "refresh.camel");
     assert_eq!(payload.account_id_hint.as_deref(), Some("acc-camel"));
 }
+
+#[test]
+fn import_account_auth_values_with_storage_imports_register_results() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init");
+
+    let items = vec![json!({
+        "email": "demo@example.com",
+        "type": "register",
+        "account_id": "acc-demo",
+        "access_token": "access",
+        "refresh_token": "refresh",
+        "id_token": "id"
+    })];
+
+    let result = super::import_account_auth_values_with_storage(&storage, items)
+        .expect("import register results");
+    assert_eq!(result.total, 1);
+    assert_eq!(result.created, 1);
+    assert_eq!(result.failed, 0);
+
+    let accounts = storage.list_accounts().expect("list accounts");
+    assert_eq!(accounts.len(), 1);
+    let token = storage
+        .find_token_by_account_id(&accounts[0].id)
+        .expect("read token");
+    assert!(token.is_some());
+}

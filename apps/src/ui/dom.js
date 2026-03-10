@@ -133,6 +133,7 @@ export const dom = {
   addAccountBtn: byId("addAccount"),
   importAccountsBtn: byId("importAccounts"),
   importAccountsFolderBtn: byId("importAccountsFolder"),
+  importAccountsRegisterDbBtn: byId("importAccountsRegisterDb"),
   importAccountsInput: byId("importAccountsInput"),
   deleteSelectedAccountsBtn: byId("deleteSelectedAccounts"),
   removeUnavailableFreeBtn: byId("removeUnavailableFree"),

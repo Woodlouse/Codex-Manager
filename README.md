@@ -11,6 +11,7 @@
 </p>
 
 本地桌面端 + 服务进程的 Codex 账号池管理器，用于统一管理账号、用量与平台 Key，并提供本地网关能力。
+本仓库已合并 `openai-auto-register` 工具，位于 `openai-auto-register/` 目录。
 
 ## 最近变更
 - 当前最新版本：`v0.1.6`（2026-03-07）
@@ -61,6 +62,7 @@
 │  └─ web                # Service 版本 Web UI（可内嵌静态资源 + /api/rpc 代理）
 ├─ scripts/             # 构建与发布脚本
 ├─ portable/            # 便携版输出目录
+├─ openai-auto-register/ # OpenAI 账号自动注册工具（Go/Python）
 └─ README.md
 ```
 
@@ -84,11 +86,20 @@
 6. 关闭：访问 `http://localhost:48761/__quit`（会关闭 web；若 web 自动拉起过 service，会尝试一并关闭 service）。
 
 ## Docker 部署
-### 方式 1：docker compose（推荐）
+### 统一入口（包含 CodexManager + Auto Register）
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose up --build
 ```
-浏览器打开：`http://localhost:48761/`
+
+- 入口页：`http://localhost:8080`
+- CodexManager：`http://localhost:48761`
+- Auto Register（Go 版）：`http://localhost:8899`
+- Account Hub：`http://localhost:48800`
+- Postgres：`localhost:5433`（db/user/password 均为 `codexmanager`）
+
+如需 IMAP 配置，将 `config.json` 挂载到容器内 `/app/config.json`。
+Auto Register 结果默认写入 Postgres（可通过 `RESULTS_STORE`/`DATABASE_URL` 覆盖）。
+账号管理支持从注册库导入（使用 `CODEXMANAGER_REGISTER_DB_URL` 连接）。
 
 ### 方式 2：分别构建/运行
 ```bash

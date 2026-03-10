@@ -700,6 +700,7 @@ const {
   deleteAccount,
   importAccountsFromFiles,
   importAccountsFromDirectory,
+  importAccountsFromRegisterDb,
   deleteSelectedAccounts,
   deleteUnavailableFreeAccounts,
   exportAccountsByFile,
@@ -757,6 +758,7 @@ function bindEvents() {
     populateApiKeyModelSelect,
     importAccountsFromFiles,
     importAccountsFromDirectory,
+    importAccountsFromRegisterDb,
     deleteSelectedAccounts,
     deleteUnavailableFreeAccounts,
     exportAccountsByFile,
@@ -887,7 +889,6 @@ async function bootstrap() {
 window.addEventListener("DOMContentLoaded", () => {
   void bootstrap();
 });
-
 
 
 

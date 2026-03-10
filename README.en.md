@@ -84,11 +84,20 @@ A local desktop + service toolkit for managing a Codex-compatible ChatGPT accoun
 6. Quit: open `http://localhost:48761/__quit` (stops web; if web auto-spawned the service, it will try to stop the service as well).
 
 ## Docker Deployment
-### Option 1: docker compose (Recommended)
+### Unified docker compose (CodexManager + Auto Register)
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose up --build
 ```
-Open in browser: `http://localhost:48761/`
+
+- Entry: `http://localhost:8080`
+- CodexManager: `http://localhost:48761/`
+- Auto Register (Go): `http://localhost:8899/`
+- Account Hub: `http://localhost:48800`
+- Postgres: `localhost:5433` (db/user/password: `codexmanager`)
+
+To provide IMAP config, mount `config.json` to `/app/config.json` in the container.
+Auto Register results are stored in Postgres by default (override via `RESULTS_STORE`/`DATABASE_URL`).
+Account management can import from the register DB (set `CODEXMANAGER_REGISTER_DB_URL`).
 
 ### Option 2: Build/Run separately
 ```bash

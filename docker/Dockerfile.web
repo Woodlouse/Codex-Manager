@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.5
 FROM node:20-bookworm-slim AS ui
 
 WORKDIR /src/apps
@@ -9,7 +10,9 @@ COPY apps/src ./src
 COPY apps/tests ./tests
 COPY apps/scripts ./scripts
 
-RUN pnpm install --frozen-lockfile
+ENV PNPM_STORE_PATH=/root/.pnpm-store
+RUN --mount=type=cache,target=/root/.pnpm-store \
+    pnpm install --frozen-lockfile
 RUN pnpm run build
 
 FROM rust:1-bookworm AS builder
@@ -21,15 +24,36 @@ COPY crates ./crates
 
 COPY --from=ui /src/apps/dist ./apps/dist
 
-RUN cargo build -p codexmanager-web --release --features embedded-ui
+ARG CARGO_BUILD_FLAGS=--release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    cargo build -p codexmanager-web --features embedded-ui ${CARGO_BUILD_FLAGS}
 
 FROM debian:bookworm-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG CARGO_BIN_DIR=release
 
-COPY --from=builder /src/target/release/codexmanager-web /usr/local/bin/codexmanager-web
+ARG APT_MIRROR
+ARG APT_SECURITY_MIRROR
+RUN set -e; \
+    sources="/etc/apt/sources.list"; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sources="/etc/apt/sources.list.d/debian.sources"; \
+    fi; \
+    if [ -n "$APT_MIRROR" ] && [ -f "$sources" ]; then \
+      sed -i "s|http://deb.debian.org/debian|$APT_MIRROR|g; s|https://deb.debian.org/debian|$APT_MIRROR|g" "$sources"; \
+    fi; \
+    if [ -n "$APT_SECURITY_MIRROR" ] && [ -f "$sources" ]; then \
+      sed -i "s|http://security.debian.org/debian-security|$APT_SECURITY_MIRROR|g; s|https://security.debian.org/debian-security|$APT_SECURITY_MIRROR|g" "$sources"; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/target/${CARGO_BIN_DIR}/codexmanager-web /usr/local/bin/codexmanager-web
 
 ENV CODEXMANAGER_WEB_ADDR=0.0.0.0:48761
 ENV CODEXMANAGER_WEB_NO_SPAWN_SERVICE=1

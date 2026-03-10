@@ -23,6 +23,7 @@ export function bindModalActionEvents({
   populateApiKeyModelSelect,
   importAccountsFromFiles,
   importAccountsFromDirectory,
+  importAccountsFromRegisterDb,
   deleteSelectedAccounts,
   deleteUnavailableFreeAccounts,
   exportAccountsByFile,
@@ -79,6 +80,11 @@ export function bindModalActionEvents({
       void importAccountsFromDirectory?.();
     });
   }
+  if (dom.importAccountsRegisterDbBtn) {
+    dom.importAccountsRegisterDbBtn.addEventListener("click", () => {
+      void importAccountsFromRegisterDb?.();
+    });
+  }
   if (dom.deleteSelectedAccountsBtn) {
     dom.deleteSelectedAccountsBtn.addEventListener("click", () => {
       void deleteSelectedAccounts?.();
@@ -99,6 +105,7 @@ export function bindModalActionEvents({
     dom.addAccountBtn,
     dom.importAccountsBtn,
     dom.importAccountsFolderBtn,
+    dom.importAccountsRegisterDbBtn,
     dom.deleteSelectedAccountsBtn,
     dom.removeUnavailableFreeBtn,
     dom.exportAccountsBtn,

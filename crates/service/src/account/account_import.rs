@@ -2,6 +2,7 @@ use codexmanager_core::auth::{
     extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims, DEFAULT_ISSUER,
 };
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
+use postgres::{Client, NoTls};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -14,6 +15,8 @@ const MAX_ERROR_ITEMS: usize = 50;
 const DEFAULT_IMPORT_BATCH_SIZE: usize = 200;
 const IMPORT_BATCH_SIZE_ENV: &str = "CODEXMANAGER_ACCOUNT_IMPORT_BATCH_SIZE";
 const ACCOUNT_SORT_STEP: i64 = 5;
+const REGISTER_DB_URL_ENV: &str = "CODEXMANAGER_REGISTER_DB_URL";
+const REGISTER_DB_URL_FALLBACK_ENV: &str = "DATABASE_URL";
 
 #[derive(Debug, Serialize)]
 pub(crate) struct AccountImportResult {
@@ -89,7 +92,35 @@ pub(crate) fn import_account_auth_json(
     contents: Vec<String>,
 ) -> Result<AccountImportResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let mut index = ExistingAccountIndex::build(&storage)?;
+    let mut items = Vec::new();
+    for content in contents {
+        items.extend(parse_items_from_content(&content)?);
+    }
+    import_account_auth_values_with_storage(&storage, items)
+}
+
+pub(crate) fn import_account_auth_register_db() -> Result<AccountImportResult, String> {
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let dsn = resolve_register_db_url()
+        .ok_or_else(|| "CODEXMANAGER_REGISTER_DB_URL/DATABASE_URL not set".to_string())?;
+    let mut client =
+        Client::connect(&dsn, NoTls).map_err(|err| format!("connect register db failed: {err}"))?;
+    let rows = client
+        .query("SELECT result FROM registration_results", &[])
+        .map_err(|err| format!("query register db failed: {err}"))?;
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let value: Value = row.get(0);
+        items.push(value);
+    }
+    import_account_auth_values_with_storage(&storage, items)
+}
+
+pub(crate) fn import_account_auth_values_with_storage(
+    storage: &Storage,
+    items: Vec<Value>,
+) -> Result<AccountImportResult, String> {
+    let mut index = ExistingAccountIndex::build(storage)?;
     let mut result = AccountImportResult {
         total: 0,
         created: 0,
@@ -99,21 +130,25 @@ pub(crate) fn import_account_auth_json(
     };
     let mut progress = AccountImportProgress::new();
     let batch_size = import_batch_size();
-
-    for content in contents {
-        let items = parse_items_from_content(&content)?;
-        import_items_in_batches(
-            &storage,
-            &mut index,
-            &mut result,
-            &mut progress,
-            items,
-            batch_size,
-        );
-    }
-
+    import_items_in_batches(
+        storage,
+        &mut index,
+        &mut result,
+        &mut progress,
+        items,
+        batch_size,
+    );
     progress.finish();
     Ok(result)
+}
+
+fn resolve_register_db_url() -> Option<String> {
+    let primary = std::env::var(REGISTER_DB_URL_ENV).ok();
+    let fallback = std::env::var(REGISTER_DB_URL_FALLBACK_ENV).ok();
+    primary
+        .or(fallback)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn import_batch_size() -> usize {

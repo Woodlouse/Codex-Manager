@@ -375,6 +375,13 @@ export async function serviceAccountImport(contents) {
   return invoke("service_account_import", withAddr({ contents }));
 }
 
+export async function serviceAccountImportFromRegisterDb() {
+  if (!isTauriRuntime()) {
+    return rpcInvoke("account/importFromRegisterDb");
+  }
+  return invoke("service_account_import_from_register_db", withAddr());
+}
+
 export async function serviceAccountImportByDirectory() {
   if (!isTauriRuntime()) {
     throw new Error("浏览器模式暂不支持导入文件夹，请使用桌面端");
@@ -729,5 +736,4 @@ export async function updateStatus() {
   }
   return invokeFirst(["app_update_status", "update_status"], {});
 }
-
 

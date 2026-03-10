@@ -188,3 +188,63 @@ test("deleteSelectedAccounts falls back to single delete when bulk command is un
     globalThis.window = previousWindow;
   }
 });
+
+test("importAccountsFromRegisterDb triggers rpc import and refresh", async () => {
+  const previousWindow = globalThis.window;
+  const invokeCalls = [];
+  const toasts = [];
+  let refreshCount = 0;
+
+  globalThis.window = {
+    __TAURI__: {
+      core: {
+        invoke: async (method) => {
+          invokeCalls.push(method);
+          if (method === "service_account_import_from_register_db") {
+            return {
+              result: {
+                total: 2,
+                created: 1,
+                updated: 1,
+                failed: 0,
+                errors: [],
+              },
+            };
+          }
+          throw new Error(`unexpected invoke: ${method}`);
+        },
+      },
+    },
+  };
+
+  const localState = {
+    selectedAccountIds: new Set(),
+    usageList: [],
+  };
+  const actions = createAccountActions({
+    state: localState,
+    ensureConnected: async () => true,
+    refreshAccountsAndUsage: async () => {
+      refreshCount += 1;
+      return true;
+    },
+    renderAccountsView: () => {},
+    renderCurrentPageView: () => {},
+    showToast: (message, type = "info") => {
+      toasts.push({ message, type });
+    },
+    showConfirmDialog: async () => true,
+  });
+
+  try {
+    assert.equal(typeof actions.importAccountsFromRegisterDb, "function");
+    await actions.importAccountsFromRegisterDb();
+    assert.equal(invokeCalls.length, 1);
+    assert.equal(invokeCalls[0], "service_account_import_from_register_db");
+    assert.equal(refreshCount, 1);
+    assert.equal(toasts.length > 0, true);
+    assert.match(toasts[toasts.length - 1].message, /导入完成/);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

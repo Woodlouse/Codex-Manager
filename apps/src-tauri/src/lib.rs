@@ -193,6 +193,13 @@ async fn service_account_import(
 }
 
 #[tauri::command]
+async fn service_account_import_from_register_db(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("account/importFromRegisterDb", addr, None).await
+}
+
+#[tauri::command]
 async fn service_account_import_by_directory(
     _addr: Option<String>,
 ) -> Result<serde_json::Value, String> {
@@ -567,10 +574,11 @@ pub fn run() {
             service_account_delete,
             service_account_delete_many,
             service_account_delete_unavailable_free,
-            service_account_update,
-            service_account_import,
-            service_account_import_by_directory,
-            service_account_export_by_account_files,
+        service_account_update,
+        service_account_import,
+        service_account_import_from_register_db,
+        service_account_import_by_directory,
+        service_account_export_by_account_files,
             local_account_delete,
             service_usage_read,
             service_usage_list,

@@ -2,8 +2,6 @@
 FROM rust:1-bookworm AS builder
 
 WORKDIR /src
-
-# 先拷贝 manifests，尽量利用 Docker layer cache
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
@@ -11,7 +9,7 @@ ARG CARGO_BUILD_FLAGS=--release
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    cargo build -p codexmanager-service ${CARGO_BUILD_FLAGS}
+    cargo build -p codexmanager-hub ${CARGO_BUILD_FLAGS}
 
 FROM debian:bookworm-slim
 
@@ -36,12 +34,13 @@ RUN set -e; \
     apt-get install -y --no-install-recommends ca-certificates; \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/target/${CARGO_BIN_DIR}/codexmanager-service /usr/local/bin/codexmanager-service
+COPY --from=builder /src/target/${CARGO_BIN_DIR}/codexmanager-hub /usr/local/bin/codexmanager-hub
 
-ENV CODEXMANAGER_SERVICE_ADDR=0.0.0.0:48760
-ENV CODEXMANAGER_DB_PATH=/data/codexmanager.db
+ENV HUB_ADDR=0.0.0.0:48800
+ENV CODEXMANAGER_SERVICE_ADDR=codexmanager-service:48760
+ENV CODEXMANAGER_RPC_TOKEN_FILE=/data/codexmanager.rpc-token
+ENV AUTO_REGISTER_BASE_URL=http://auto-register-go:8899
 
-VOLUME ["/data"]
-EXPOSE 48760
+EXPOSE 48800
 
-CMD ["codexmanager-service"]
+CMD ["codexmanager-hub"]

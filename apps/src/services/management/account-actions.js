@@ -609,15 +609,46 @@ export function createAccountActions({
     await submitImportedContents(contents, `${fileCount} 个 JSON 文件`);
   }
 
+  async function importAccountsFromRegisterDb() {
+    await enqueueAccountOp(async () => {
+      const ok = await ensureConnected();
+      if (!ok) return;
+      showToast("正在从注册库导入账号...");
+      let res = null;
+      try {
+        res = await api.serviceAccountImportFromRegisterDb();
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err), "error");
+        return;
+      }
+      if (res && res.error) {
+        showToast(String(res.error || "导入失败"), "error");
+        return;
+      }
+      const total = Number(res?.total || 0);
+      const created = Number(res?.created || 0);
+      const updated = Number(res?.updated || 0);
+      const failed = Number(res?.failed || 0);
+      await refreshAccountsSection();
+      showToast(`导入完成（注册库）：共${total}，新增${created}，更新${updated}，失败${failed}`);
+      if (failed > 0 && Array.isArray(res?.errors) && res.errors.length > 0) {
+        const first = res.errors[0];
+        const index = Number(first?.index || 0);
+        const message = String(first?.message || "未知错误");
+        showToast(`首个失败项 #${index}: ${message}`, "error");
+      }
+    });
+  }
+
   return {
     updateAccountSort,
     deleteAccount,
     deleteSelectedAccounts,
     importAccountsFromFiles,
     importAccountsFromDirectory,
+    importAccountsFromRegisterDb,
     setManualPreferredAccount,
     deleteUnavailableFreeAccounts,
     exportAccountsByFile,
   };
 }
-
