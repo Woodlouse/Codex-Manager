@@ -291,6 +291,9 @@ pub(super) fn apply_request_overrides(
                 if had_stream_passthrough {
                     changed = true;
                 }
+                if responses::normalize_dynamic_tools_to_tools(path, obj) {
+                    changed = true;
+                }
                 if responses::ensure_input_list(path, obj) {
                     changed = true;
                 }

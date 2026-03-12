@@ -711,6 +711,83 @@
 
                             <div class="settings-proxy-strip">
                                 <div
+                                    class="settings-top-item settings-top-item-transport"
+                                >
+                                    <label
+                                        class="hint settings-field-label settings-field-label-with-tip settings-top-label"
+                                        for="gatewayTransportSseKeepaliveIntervalMs"
+                                    >
+                                        <span>网关传输设置</span>
+                                        <span
+                                            class="settings-inline-tip"
+                                            tabindex="0"
+                                            role="note"
+                                            title="用于控制长时间安静的流式响应。SSE 保活会定期补发空帧，流式超时支持填 0 表示不限制。"
+                                            aria-label="网关传输设置说明：用于控制长时间安静的流式响应，SSE 保活会定期补发空帧，上游流式超时支持填 0 表示不限制。"
+                                            >?</span
+                                        >
+                                    </label>
+                                    <div class="settings-top-main">
+                                        <div class="settings-transport-main">
+                                            <label
+                                                class="settings-transport-field"
+                                                for="gatewayTransportSseKeepaliveIntervalMs"
+                                            >
+                                                <span
+                                                    class="hint settings-field-label"
+                                                    >SSE 保活间隔（毫秒）</span
+                                                >
+                                                <input
+                                                    id="gatewayTransportSseKeepaliveIntervalMs"
+                                                    class="settings-inline-input mono"
+                                                    type="number"
+                                                    min="1"
+                                                    step="1"
+                                                    placeholder="15000"
+                                                />
+                                            </label>
+                                            <label
+                                                class="settings-transport-field"
+                                                for="gatewayTransportUpstreamStreamTimeoutMs"
+                                            >
+                                                <span
+                                                    class="hint settings-field-label"
+                                                    >上游流式超时（毫秒）</span
+                                                >
+                                                <input
+                                                    id="gatewayTransportUpstreamStreamTimeoutMs"
+                                                    class="settings-inline-input mono"
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
+                                                    placeholder="1800000"
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="settings-top-aside settings-row-actions"
+                                    >
+                                        <button
+                                            id="gatewayTransportSave"
+                                            class="secondary"
+                                            type="button"
+                                        >
+                                            保存设置
+                                        </button>
+                                        <div
+                                            id="gatewayTransportHint"
+                                            class="hint"
+                                        >
+                                            SSE 保活用于长流空闲阶段续连；上游流式超时支持填
+                                            0 表示不限制。
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-proxy-strip">
+                                <div
                                     class="settings-top-item settings-top-item-proxy"
                                 >
                                     <label
@@ -1304,7 +1381,7 @@
                         当前未启用 Web 访问密码。
                     </p>
                     <p class="hint">
-                        密码保存后，`codexmanager-web` 会要求先验证再进入页面。
+                        密码保存后，每个浏览器标签页首次打开都需要先验证。
                     </p>
                     <input
                         id="webAccessPasswordQuickInput"

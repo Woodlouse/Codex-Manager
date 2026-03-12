@@ -1,5 +1,8 @@
-use super::*;
-use crate::settings_commands::effective_lightweight_mode_on_close_to_tray;
+use crate::commands::settings::effective_lightweight_mode_on_close_to_tray;
+use crate::app_storage::{
+    read_account_import_contents_from_directory, resolve_rpc_token_path_for_db,
+};
+use crate::rpc_client::{normalize_addr, rpc_call, rpc_call_with_sockets};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -11,6 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn normalize_addr_defaults_to_localhost() {
     assert_eq!(normalize_addr("5050").unwrap(), "localhost:5050");
     assert_eq!(normalize_addr("localhost:5050").unwrap(), "localhost:5050");
+    assert_eq!(normalize_addr("example.com").unwrap(), "example.com");
 }
 
 #[test]

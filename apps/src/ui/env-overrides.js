@@ -12,10 +12,10 @@ function fallbackEnvLabel(key) {
 
 const ENV_OVERRIDE_DESCRIPTION_MAP = {
   CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS: "控制单次上游请求允许持续的最长时间，单位毫秒；超过后会主动结束请求并返回超时错误。",
-  CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS: "控制流式上游请求允许持续的最长时间，单位毫秒；适合限制长时间无结束的 SSE/流式连接。",
+  CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS: "控制流式上游请求允许持续的最长时间，单位毫秒；填 0 可关闭流式超时上限，适合长时间持续输出的 SSE/流式连接。",
+  CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS: "控制向下游补发 SSE keep-alive 帧的间隔，单位毫秒；上游长时间安静时可避免客户端误判连接中断。",
   CODEXMANAGER_UPSTREAM_CONNECT_TIMEOUT_SECS: "控制连接上游服务器时的超时时间，单位秒；主要影响握手和网络建立阶段。",
   CODEXMANAGER_UPSTREAM_BASE_URL: "控制默认上游地址；修改后，网关会把请求转发到新的目标地址。",
-  CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL: "控制主上游失败时的回退地址；当主上游不可用时会尝试切换到这里。",
   CODEXMANAGER_UPSTREAM_COOKIE: "给上游请求补充 Cookie 凭据，常用于通过挑战页或保持受保护会话。",
   CODEXMANAGER_PROXY_LIST: "配置上游代理池列表；多个代理会按账号稳定分配，用于分流或隔离出口。",
   CODEXMANAGER_WEB_ADDR: "控制 Web 管理页的监听地址和端口；修改后会影响浏览器访问入口。",

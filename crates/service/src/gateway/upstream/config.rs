@@ -2,12 +2,10 @@ use reqwest::header::HeaderValue;
 use std::sync::{OnceLock, RwLock};
 
 const ENV_UPSTREAM_BASE_URL: &str = "CODEXMANAGER_UPSTREAM_BASE_URL";
-const ENV_UPSTREAM_FALLBACK_BASE_URL: &str = "CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL";
 const DEFAULT_UPSTREAM_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 
 static CONFIG_LOADED: OnceLock<()> = OnceLock::new();
 static UPSTREAM_BASE_URL: OnceLock<RwLock<String>> = OnceLock::new();
-static UPSTREAM_FALLBACK_BASE_URL: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 
 pub(in super::super) fn normalize_upstream_base_url(base: &str) -> String {
     let mut normalized = base.trim().trim_end_matches('/').to_string();
@@ -26,22 +24,8 @@ pub(in super::super) fn resolve_upstream_base_url() -> String {
     crate::lock_utils::read_recover(upstream_base_url_cell(), "upstream_base_url").clone()
 }
 
-pub(in super::super) fn resolve_upstream_fallback_base_url(primary_base: &str) -> Option<String> {
-    ensure_config_loaded();
-    crate::lock_utils::read_recover(
-        upstream_fallback_base_url_cell(),
-        "upstream_fallback_base_url",
-    )
-    .clone()
-    .or_else(|| {
-        if is_chatgpt_backend_base(primary_base) {
-            // 中文注释：保持 v0.1.4 语义：ChatGPT codex upstream 在 /responses 命中 401/403/429
-            // 或 challenge 时，默认兜底到 OpenAI v1，避免直接暴露 challenge blocked。
-            Some("https://api.openai.com/v1".to_string())
-        } else {
-            None
-        }
-    })
+pub(in super::super) fn resolve_upstream_fallback_base_url(_primary_base: &str) -> Option<String> {
+    None
 }
 
 pub(in super::super) fn is_openai_api_base(base: &str) -> bool {
@@ -112,13 +96,6 @@ pub(in super::super) fn reload_from_env() {
         crate::lock_utils::write_recover(upstream_base_url_cell(), "upstream_base_url");
     *cached_base = base;
 
-    let fallback = env_non_empty(ENV_UPSTREAM_FALLBACK_BASE_URL)
-        .map(|value| normalize_upstream_base_url(&value));
-    let mut cached_fallback = crate::lock_utils::write_recover(
-        upstream_fallback_base_url_cell(),
-        "upstream_fallback_base_url",
-    );
-    *cached_fallback = fallback;
 }
 
 fn ensure_config_loaded() {
@@ -127,10 +104,6 @@ fn ensure_config_loaded() {
 
 fn upstream_base_url_cell() -> &'static RwLock<String> {
     UPSTREAM_BASE_URL.get_or_init(|| RwLock::new(DEFAULT_UPSTREAM_BASE_URL.to_string()))
-}
-
-fn upstream_fallback_base_url_cell() -> &'static RwLock<Option<String>> {
-    UPSTREAM_FALLBACK_BASE_URL.get_or_init(|| RwLock::new(None))
 }
 
 fn env_non_empty(name: &str) -> Option<String> {

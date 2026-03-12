@@ -8,6 +8,7 @@ function createServiceSync(overrides = {}) {
     route: [],
     header: [],
     proxy: [],
+    transport: [],
     background: [],
     toasts: [],
     toggles: 0,
@@ -16,6 +17,10 @@ function createServiceSync(overrides = {}) {
   let routeStrategyValue = "balanced";
   let cpaNoCookieHeaderModeValue = true;
   let upstreamProxyValue = "http://127.0.0.1:7890";
+  let gatewayTransportValue = {
+    sseKeepaliveIntervalMs: 15000,
+    upstreamStreamTimeoutMs: 1800000,
+  };
   let backgroundTasksValue = {
     usagePollingEnabled: true,
     usagePollIntervalSecs: 30,
@@ -37,6 +42,9 @@ function createServiceSync(overrides = {}) {
     proxySaved: [],
     proxyInput: [],
     proxyHint: [],
+    transportSaved: [],
+    transportForm: [],
+    transportHint: [],
     backgroundSaved: [],
     backgroundForm: [],
     backgroundHint: [],
@@ -66,6 +74,10 @@ function createServiceSync(overrides = {}) {
     serviceGatewayUpstreamProxySet: async (proxyUrl) => {
       calls.proxy.push(proxyUrl);
       return { proxyUrl };
+    },
+    serviceGatewayTransportSet: async (settings) => {
+      calls.transport.push(settings);
+      return settings;
     },
     serviceGatewayBackgroundTasksSet: async (settings) => {
       calls.background.push(settings);
@@ -106,6 +118,22 @@ function createServiceSync(overrides = {}) {
     },
     normalizeUpstreamProxyUrl: (value) => String(value || "").trim(),
     upstreamProxyHintText: "proxy hint",
+    readGatewayTransportSetting: () => gatewayTransportValue,
+    saveGatewayTransportSetting: (value) => {
+      gatewayTransportValue = { ...value };
+      sinks.transportSaved.push(value);
+    },
+    setGatewayTransportForm: (value) => {
+      sinks.transportForm.push(value);
+    },
+    normalizeGatewayTransportSettings: (value = {}) => ({
+      sseKeepaliveIntervalMs: Number(value.sseKeepaliveIntervalMs || 0),
+      upstreamStreamTimeoutMs: Number(value.upstreamStreamTimeoutMs ?? 0),
+    }),
+    setGatewayTransportHint: (value) => {
+      sinks.transportHint.push(String(value || ""));
+    },
+    gatewayTransportHintText: "transport hint",
     readBackgroundTasksSetting: () => backgroundTasksValue,
     saveBackgroundTasksSetting: (value) => {
       backgroundTasksValue = { ...value };
@@ -168,6 +196,7 @@ test("syncRuntimeSettingsForCurrentProbe only resyncs when service probe changes
   assert.equal(calls.route.length, 1);
   assert.equal(calls.header.length, 1);
   assert.equal(calls.proxy.length, 1);
+  assert.equal(calls.transport.length, 1);
   assert.equal(calls.background.length, 1);
 
   state.serviceProbeId = 2;
@@ -176,7 +205,9 @@ test("syncRuntimeSettingsForCurrentProbe only resyncs when service probe changes
   assert.equal(calls.route.length, 2);
   assert.equal(calls.header.length, 2);
   assert.equal(calls.proxy.length, 2);
+  assert.equal(calls.transport.length, 2);
   assert.equal(calls.background.length, 2);
   assert.deepEqual(sinks.proxyHint, ["proxy hint", "proxy hint"]);
+  assert.deepEqual(sinks.transportHint, ["transport hint", "transport hint"]);
   assert.equal(sinks.backgroundHint.length, 2);
 });

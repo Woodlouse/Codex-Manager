@@ -1,4 +1,5 @@
-use super::{next_account_sort, pick_existing_account_id_by_identity};
+use super::next_account_sort;
+use crate::account_identity::{build_account_storage_id, pick_existing_account_id_by_identity};
 use codexmanager_core::storage::{now_ts, Account, Storage};
 
 fn build_account(
@@ -30,10 +31,11 @@ fn pick_existing_account_requires_exact_scope_when_workspace_present() {
         .expect("insert ws-a");
 
     let found = pick_existing_account_id_by_identity(
-        &storage,
+        storage.list_accounts().expect("list accounts").iter(),
         Some("cgpt-1"),
         Some("ws-b"),
-        "sub-fallback",
+        Some("sub-fallback"),
+        None,
     );
 
     assert_eq!(found, None);
@@ -51,13 +53,20 @@ fn pick_existing_account_matches_exact_workspace_scope() {
         .expect("insert ws-b");
 
     let found = pick_existing_account_id_by_identity(
-        &storage,
+        storage.list_accounts().expect("list accounts").iter(),
         Some("cgpt-1"),
         Some("ws-b"),
-        "sub-fallback",
+        Some("sub-fallback"),
+        None,
     );
 
     assert_eq!(found.as_deref(), Some("acc-ws-b"));
+}
+
+#[test]
+fn build_account_storage_id_keeps_login_scope_shape() {
+    let account_id = build_account_storage_id("sub-1", Some("cgpt-1"), Some("ws-a"), None);
+    assert_eq!(account_id, "sub-1::cgpt=cgpt-1|ws=ws-a");
 }
 
 #[test]

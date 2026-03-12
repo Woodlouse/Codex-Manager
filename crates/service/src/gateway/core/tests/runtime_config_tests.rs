@@ -134,3 +134,24 @@ fn set_upstream_proxy_url_normalizes_socks_scheme() {
         Some("socks5h://127.0.0.1:7890")
     );
 }
+
+#[test]
+fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
+    let _guard = test_guard();
+    let _guard = EnvGuard::set(ENV_UPSTREAM_STREAM_TIMEOUT_MS, "1800000");
+
+    let applied = set_upstream_stream_timeout_ms(432100);
+
+    assert_eq!(applied, 432100);
+    assert_eq!(current_upstream_stream_timeout_ms(), 432100);
+    assert_eq!(
+        upstream_stream_timeout(),
+        Some(Duration::from_millis(432100))
+    );
+    assert_eq!(
+        std::env::var(ENV_UPSTREAM_STREAM_TIMEOUT_MS)
+            .ok()
+            .as_deref(),
+        Some("432100")
+    );
+}

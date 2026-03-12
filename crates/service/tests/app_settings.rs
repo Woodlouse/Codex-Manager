@@ -27,6 +27,8 @@ fn reset_runtime_defaults() {
         "lightweightModeOnCloseToTray": false,
         "cpaNoCookieHeaderModeEnabled": false,
         "upstreamProxyUrl": "",
+        "upstreamStreamTimeoutMs": 1800000,
+        "sseKeepaliveIntervalMs": 15000,
         "envOverrides": {},
         "backgroundTasks": {
             "usagePollingEnabled": true,
@@ -144,6 +146,8 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "routeStrategy": "rr",
             "cpaNoCookieHeaderModeEnabled": true,
             "upstreamProxyUrl": "http://127.0.0.1:7890",
+            "upstreamStreamTimeoutMs": 654321,
+            "sseKeepaliveIntervalMs": 17000,
             "backgroundTasks": {
                 "usagePollingEnabled": false,
                 "usagePollIntervalSecs": 900,
@@ -191,6 +195,18 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("upstreamStreamTimeoutMs")
+                .and_then(|value| value.as_u64()),
+            Some(654321)
+        );
+        assert_eq!(
+            snapshot
+                .get("sseKeepaliveIntervalMs")
+                .and_then(|value| value.as_u64()),
+            Some(17000)
+        );
+        assert_eq!(
+            snapshot
                 .get("routeStrategy")
                 .and_then(|value| value.as_str()),
             Some("balanced")
@@ -213,6 +229,22 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 )
                 .expect("read lightweight close to tray"),
             Some("1".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY
+                )
+                .expect("read upstream stream timeout"),
+            Some("654321".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY
+                )
+                .expect("read sse keepalive interval"),
+            Some("17000".to_string())
         );
         let stored_password = storage
             .get_app_setting(codexmanager_service::APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY)
@@ -248,6 +280,20 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
                 now_ts(),
             )
             .expect("save upstream proxy");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+                "456789",
+                now_ts(),
+            )
+            .expect("save upstream stream timeout");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
+                "19000",
+                now_ts(),
+            )
+            .expect("save sse keepalive interval");
         storage
             .set_app_setting(
                 codexmanager_service::APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
@@ -304,6 +350,18 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
         );
         assert_eq!(
             snapshot
+                .get("upstreamStreamTimeoutMs")
+                .and_then(|value| value.as_u64()),
+            Some(456789)
+        );
+        assert_eq!(
+            snapshot
+                .get("sseKeepaliveIntervalMs")
+                .and_then(|value| value.as_u64()),
+            Some(19000)
+        );
+        assert_eq!(
+            snapshot
                 .get("backgroundTasks")
                 .and_then(|value| value.get("usagePollingEnabled"))
                 .and_then(|value| value.as_bool()),
@@ -342,6 +400,8 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
         ] {
             storage.delete_app_setting(key).expect("delete app setting");
@@ -356,6 +416,8 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 "CODEXMANAGER_UPSTREAM_PROXY_URL",
                 Some("http://127.0.0.1:7899"),
             ),
+            ("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS", Some("432100")),
+            ("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS", Some("14000")),
             ("CODEXMANAGER_USAGE_POLLING_ENABLED", Some("0")),
             ("CODEXMANAGER_USAGE_POLL_INTERVAL_SECS", Some("777")),
             ("CODEXMANAGER_GATEWAY_KEEPALIVE_ENABLED", Some("0")),
@@ -398,6 +460,18 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get("upstreamProxyUrl")
                 .and_then(|value| value.as_str()),
             Some("http://127.0.0.1:7899")
+        );
+        assert_eq!(
+            snapshot
+                .get("upstreamStreamTimeoutMs")
+                .and_then(|value| value.as_u64()),
+            Some(432100)
+        );
+        assert_eq!(
+            snapshot
+                .get("sseKeepaliveIntervalMs")
+                .and_then(|value| value.as_u64()),
+            Some(14000)
         );
         assert_eq!(
             snapshot
@@ -446,6 +520,22 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY)
                 .expect("read route strategy"),
             Some("balanced".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY
+                )
+                .expect("read upstream stream timeout"),
+            Some("432100".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY
+                )
+                .expect("read sse keepalive interval"),
+            Some("14000".to_string())
         );
     });
 }
@@ -509,12 +599,31 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
                 .and_then(|value| value.as_str()),
             Some("120000")
         );
+        let stream_timeout = catalog
+            .iter()
+            .find(|item| {
+                item.get("key").and_then(|value| value.as_str())
+                    == Some("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS")
+            })
+            .expect("stream timeout item");
+        assert_eq!(
+            stream_timeout
+                .get("defaultValue")
+                .and_then(|value| value.as_str()),
+            Some("1800000")
+        );
         assert!(snapshot
             .get("envOverrideReservedKeys")
             .and_then(|value| value.as_array())
             .is_some_and(|items| items
                 .iter()
                 .any(|item| item.as_str() == Some("CODEXMANAGER_ROUTE_STRATEGY"))));
+        assert!(snapshot
+            .get("envOverrideReservedKeys")
+            .and_then(|value| value.as_array())
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item.as_str() == Some("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"))));
 
         let stored = read_env_overrides_map(db_path);
         assert_eq!(
@@ -637,7 +746,7 @@ fn app_settings_set_rejects_reserved_and_bootstrap_env_override_keys() {
     with_temp_db(|_| {
         let reserved = codexmanager_service::app_settings_set(Some(&json!({
             "envOverrides": {
-                "CODEXMANAGER_ROUTE_STRATEGY": "balanced"
+                "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS": "123456"
             }
         })));
         assert!(reserved.is_err());

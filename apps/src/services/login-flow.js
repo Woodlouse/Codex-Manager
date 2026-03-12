@@ -53,6 +53,7 @@ export function createLoginFlow({
   withButtonBusy,
   ensureConnected,
   refreshAll,
+  refreshAccountsPage,
   closeAccountModal,
   api: apiClient = api,
 }) {
@@ -115,6 +116,11 @@ export function createLoginFlow({
         });
         if (success) {
           await refreshAll();
+          await refreshAccountsPage?.({
+            latestOnly: true,
+            silent: true,
+            ensureConnection: false,
+          });
           closeAccountModal();
         } else {
           dom.loginHint.textContent = "登录失败，请重试。";
@@ -156,6 +162,11 @@ export function createLoginFlow({
         if (res && res.ok) {
           dom.loginHint.textContent = "登录成功，正在刷新...";
           await refreshAll();
+          await refreshAccountsPage?.({
+            latestOnly: true,
+            silent: true,
+            ensureConnection: false,
+          });
           closeAccountModal();
           return;
         }

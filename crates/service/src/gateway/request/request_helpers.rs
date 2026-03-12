@@ -166,20 +166,5 @@ pub(crate) fn normalize_models_path(path: &str) -> String {
     if !is_models_path {
         return path.to_string();
     }
-    let has_client_version = path
-        .split_once('?')
-        .map(|(_, query)| {
-            query.split('&').any(|part| {
-                part.split('=')
-                    .next()
-                    .is_some_and(|key| key.eq_ignore_ascii_case("client_version"))
-            })
-        })
-        .unwrap_or(false);
-    if has_client_version {
-        return path.to_string();
-    }
-    let client_version = super::DEFAULT_MODELS_CLIENT_VERSION.to_string();
-    let separator = if path.contains('?') { '&' } else { '?' };
-    format!("{path}{separator}client_version={client_version}")
+    path.to_string()
 }

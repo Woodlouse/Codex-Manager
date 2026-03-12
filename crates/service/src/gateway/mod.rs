@@ -5,7 +5,7 @@ mod cooldown;
 mod error_response;
 #[path = "routing/failover.rs"]
 mod failover;
-#[path = "observability/http_bridge.rs"]
+#[path = "observability/http_bridge/mod.rs"]
 mod http_bridge;
 #[path = "request/incoming_headers.rs"]
 mod incoming_headers;
@@ -115,13 +115,12 @@ use runtime_config::{
     account_max_inflight_limit, fresh_upstream_client, fresh_upstream_client_for_account,
     request_gate_wait_timeout, trace_body_preview_max_bytes, upstream_client,
     upstream_client_for_account, upstream_cookie, upstream_stream_timeout, upstream_total_timeout,
-    DEFAULT_GATEWAY_DEBUG, DEFAULT_MODELS_CLIENT_VERSION,
+    DEFAULT_GATEWAY_DEBUG,
 };
 use selection::collect_gateway_candidates;
 #[cfg(test)]
 use token_exchange::account_token_exchange_lock;
 use token_exchange::resolve_openai_bearer_token;
-use upstream::candidates::prepare_gateway_candidates;
 use upstream::proxy::proxy_validated_request;
 
 pub(crate) fn reload_runtime_config_from_env() {
@@ -134,7 +133,7 @@ pub(crate) fn reload_runtime_config_from_env() {
     upstream::config::reload_from_env();
     trace_log::reload_from_env();
     http_bridge::reload_from_env();
-    protocol_adapter::reload_env_dependent_state();
+    protocol_adapter::prompt_cache::reload_runtime_state();
 }
 
 pub(crate) fn current_route_strategy() -> &'static str {
@@ -173,6 +172,22 @@ pub(crate) fn set_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<S
     // 中文注释：用量轮询和 token 刷新复用独立 HTTP client，代理变更后同步重建，避免继续走旧网络路径。
     crate::usage_http::reload_usage_http_client_from_env();
     Ok(applied)
+}
+
+pub(crate) fn current_upstream_stream_timeout_ms() -> u64 {
+    runtime_config::current_upstream_stream_timeout_ms()
+}
+
+pub(crate) fn set_upstream_stream_timeout_ms(timeout_ms: u64) -> u64 {
+    runtime_config::set_upstream_stream_timeout_ms(timeout_ms)
+}
+
+pub(crate) fn current_sse_keepalive_interval_ms() -> u64 {
+    http_bridge::current_sse_keepalive_interval_ms()
+}
+
+pub(crate) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, String> {
+    http_bridge::set_sse_keepalive_interval_ms(interval_ms)
 }
 
 pub(crate) fn manual_preferred_account() -> Option<String> {

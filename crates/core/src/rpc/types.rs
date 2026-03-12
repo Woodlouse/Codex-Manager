@@ -215,6 +215,18 @@ pub struct RequestLogTodaySummaryResult {
     pub estimated_cost: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupSnapshotResult {
+    pub accounts: Vec<AccountSummary>,
+    pub usage_snapshots: Vec<UsageSnapshotResult>,
+    pub api_keys: Vec<ApiKeySummary>,
+    pub api_model_options: Vec<ModelOption>,
+    pub manual_preferred_account_id: Option<String>,
+    pub request_log_today_summary: RequestLogTodaySummaryResult,
+    pub request_logs: Vec<RequestLogSummary>,
+}
+
 #[cfg(test)]
 #[path = "tests/types_tests.rs"]
 mod tests;

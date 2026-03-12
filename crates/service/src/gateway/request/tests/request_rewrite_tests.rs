@@ -302,6 +302,63 @@ fn responses_stream_passthrough_keeps_client_stream_flag_when_enabled() {
 }
 
 #[test]
+fn responses_dynamic_tools_are_mapped_to_tools_for_codex_backend() {
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "hello",
+        "tools": [{
+            "type": "function",
+            "name": "existing_tool",
+            "parameters": { "type": "object", "properties": {} }
+        }],
+        "dynamicTools": [{
+            "name": "dynamic_weather",
+            "description": "lookup weather",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "city": { "type": "string" }
+                },
+                "required": ["city"]
+            }
+        }]
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    let tools = value
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .expect("tools array");
+    assert_eq!(tools.len(), 2);
+    assert!(value.get("dynamicTools").is_none());
+    assert_eq!(
+        tools[1].get("name").and_then(serde_json::Value::as_str),
+        Some("dynamic_weather")
+    );
+    assert_eq!(
+        tools[1]
+            .get("description")
+            .and_then(serde_json::Value::as_str),
+        Some("lookup weather")
+    );
+    assert_eq!(
+        tools[1]
+            .get("parameters")
+            .and_then(|parameters| parameters.get("properties"))
+            .and_then(|properties| properties.get("city"))
+            .and_then(|city| city.get("type"))
+            .and_then(serde_json::Value::as_str),
+        Some("string")
+    );
+}
+
+#[test]
 fn responses_retains_only_codex_supported_fields() {
     let body = json!({
         "model": "gpt-5.3-codex",

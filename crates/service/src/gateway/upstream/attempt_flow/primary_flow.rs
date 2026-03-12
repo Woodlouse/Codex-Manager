@@ -1,0 +1,153 @@
+use bytes::Bytes;
+use codexmanager_core::storage::{Account, Storage, Token};
+use reqwest::header::CONTENT_TYPE;
+use std::time::Instant;
+use tiny_http::Request;
+
+use super::fallback_branch::{handle_openai_fallback_branch, FallbackBranchResult};
+use super::primary_attempt::{run_primary_upstream_attempt, PrimaryAttemptResult};
+
+pub(super) enum PrimaryFlowDecision {
+    Continue {
+        upstream: reqwest::blocking::Response,
+        auth_token: String,
+    },
+    RespondUpstream(reqwest::blocking::Response),
+    Failover,
+    Terminal {
+        status_code: u16,
+        message: String,
+    },
+}
+
+fn resolve_chatgpt_primary_bearer(token: &Token) -> Option<String> {
+    let access = token.access_token.trim();
+    if access.is_empty() {
+        None
+    } else {
+        Some(access.to_string())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_primary_upstream_flow<F>(
+    client: &reqwest::blocking::Client,
+    storage: &Storage,
+    method: &reqwest::Method,
+    request: &Request,
+    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
+    body: &Bytes,
+    is_stream: bool,
+    base: &str,
+    path: &str,
+    primary_url: &str,
+    request_deadline: Option<Instant>,
+    upstream_fallback_base: Option<&str>,
+    account: &Account,
+    token: &mut Token,
+    upstream_cookie: Option<&str>,
+    strip_session_affinity: bool,
+    debug: bool,
+    allow_openai_fallback: bool,
+    has_more_candidates: bool,
+    mut log_gateway_result: F,
+) -> PrimaryFlowDecision
+where
+    F: FnMut(Option<&str>, u16, Option<&str>),
+{
+    let (auth_token, token_source) = if let Some(access_token) = resolve_chatgpt_primary_bearer(token)
+    {
+        (access_token, "access_token")
+    } else {
+        let err = "missing chatgpt access token";
+        super::super::super::mark_account_cooldown_for_status(&account.id, 401);
+        log_gateway_result(Some(primary_url), 401, Some(err));
+        if has_more_candidates {
+            return PrimaryFlowDecision::Failover;
+        }
+        return PrimaryFlowDecision::Terminal {
+            status_code: 401,
+            message: err.to_string(),
+        };
+    };
+    if debug {
+        log::debug!(
+            "event=gateway_upstream_token_source path={} account_id={} token_source={} upstream_base={}",
+            path,
+            account.id,
+            token_source,
+            base,
+        );
+    }
+
+    let upstream = match run_primary_upstream_attempt(
+        client,
+        method,
+        primary_url,
+        request_deadline,
+        request,
+        incoming_headers,
+        body,
+        is_stream,
+        upstream_cookie,
+        auth_token.as_str(),
+        account,
+        strip_session_affinity,
+        has_more_candidates,
+        &mut log_gateway_result,
+    ) {
+        PrimaryAttemptResult::Upstream(resp) => resp,
+        PrimaryAttemptResult::Failover => return PrimaryFlowDecision::Failover,
+        PrimaryAttemptResult::Terminal {
+            status_code,
+            message,
+        } => {
+            return PrimaryFlowDecision::Terminal {
+                status_code,
+                message,
+            };
+        }
+    };
+
+    let status = upstream.status();
+    match handle_openai_fallback_branch(
+        client,
+        storage,
+        method,
+        request,
+        incoming_headers,
+        body,
+        is_stream,
+        base,
+        path,
+        upstream_fallback_base,
+        account,
+        token,
+        upstream_cookie,
+        strip_session_affinity,
+        debug,
+        allow_openai_fallback,
+        status,
+        upstream.headers().get(CONTENT_TYPE),
+        has_more_candidates,
+        &mut log_gateway_result,
+    ) {
+        FallbackBranchResult::NotTriggered => PrimaryFlowDecision::Continue {
+            upstream,
+            auth_token,
+        },
+        FallbackBranchResult::RespondUpstream(resp) => PrimaryFlowDecision::RespondUpstream(resp),
+        FallbackBranchResult::Failover => PrimaryFlowDecision::Failover,
+        FallbackBranchResult::Terminal {
+            status_code,
+            message,
+        } => PrimaryFlowDecision::Terminal {
+            status_code,
+            message,
+        },
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/attempt_flow/primary_flow_tests.rs"]
+mod tests;

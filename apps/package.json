@@ -7,10 +7,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node scripts/run-tests.mjs src .test.js",
-    "test:ui": "node scripts/run-tests.mjs tests .test.mjs",
+    "test:ui": "node scripts/run-tests.mjs tests .test.js",
     "check": "pnpm run test && pnpm run build && pnpm run test:ui"
   },
   "devDependencies": {
     "vite": "^5.0.0"
   }
 }
+

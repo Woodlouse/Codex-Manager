@@ -379,9 +379,11 @@ fn is_supported_openai_chat_completions_create_key(key: &str) -> bool {
             | "temperature"
             | "tool_choice"
             | "tools"
+            | "text"
             | "top_logprobs"
             | "top_p"
             | "user"
+            | "verbosity"
             | "web_search_options"
     )
 }

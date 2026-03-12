@@ -3,6 +3,9 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
 
+use crate::app_storage::apply_runtime_storage_env;
+use crate::rpc_client::rpc_call;
+
 pub(super) fn validate_initialize_response(v: &serde_json::Value) -> Result<(), String> {
     // 连接探测必须确认对端确实是 codexmanager-service，避免端口被其他服务占用时误判“已连接”。
     let server_name = v
@@ -33,7 +36,7 @@ pub(super) fn spawn_service_with_addr(
         return Ok(());
     }
 
-    super::apply_runtime_storage_env(app);
+    apply_runtime_storage_env(app);
 
     std::env::set_var("CODEXMANAGER_SERVICE_ADDR", bind_addr);
     codexmanager_service::clear_shutdown_flag();
@@ -98,7 +101,7 @@ pub(super) fn wait_for_service_ready(
 ) -> Result<(), String> {
     let mut last_err = "service bootstrap check failed".to_string();
     for attempt in 0..=retries {
-        match super::rpc_call("initialize", Some(addr.to_string()), None) {
+        match rpc_call("initialize", Some(addr.to_string()), None) {
             Ok(v) => match validate_initialize_response(&v) {
                 Ok(()) => return Ok(()),
                 Err(err) => last_err = err,

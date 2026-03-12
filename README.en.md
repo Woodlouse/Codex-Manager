@@ -10,30 +10,36 @@
   <a href="README.md">中文</a>
 </p>
 
-A local desktop + service toolkit for managing a Codex-compatible ChatGPT account pool, usage, and platform keys, with a built-in local gateway.
+A local desktop + service toolkit for managing Codex-compatible accounts, usage, platform keys, and a built-in local gateway.
+
+## Landing Guide
+| What you want to do | Go here |
+| --- | --- |
+| First launch, deployment, Docker, macOS allowlist | [Runtime and deployment guide](docs/report/20260310122606850_运行与部署指南.md) |
+| Configure port, proxy, database, Web password, environment variables | [Environment variables and runtime config](docs/report/20260309195355187_环境变量与运行配置说明.md) |
+| Troubleshoot account selection, import failures, challenge blocks, request issues | [FAQ and account-hit rules](docs/report/20260310122606852_FAQ与账号命中规则.md) |
+| Build locally, package, publish, run scripts | [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
 ## Recent Changes
-- Current latest version: `v0.1.6` (2026-03-07)
-- Current `main` continues to harden the Web auth flow: the `codexmanager-web` password remains persisted, but authenticated sessions are now scoped to the current Web process, so previous cookies no longer survive a full close-and-reopen cycle.
-- Protocol adaptation keeps moving closer to Codex / OpenAI-compatible behavior: `/v1/chat/completions` and `/v1/responses` forwarding are more aligned, and the `tools` / `tool_calls` aggregation, shortened tool-name mapping, and response restoration paths are now preserved across compatible clients such as Cherry Studio, OpenClaw, and Claude Code.
-- Gateway diagnostics are richer: failure responses now expose structured `errorCode` / `errorDetail` fields, along with `X-CodexManager-Error-Code` and `X-CodexManager-Trace-Id` headers; request logs also capture original path, adapted path, and more upstream context for easier debugging.
-- The release pipeline stays consolidated around `release-all.yml` as the single multi-platform entry point; when `run_verify=false`, jobs automatically fall back to a local frontend build instead of requiring a prebuilt artifact, while still reusing frontend artifacts and protocol regression baselines where available.
-- Desktop and settings governance also moved forward: normalized SOCKS5 / HTTP upstream proxy support and hints, configurable listener bind mode, recursive folder-based account import, single-instance window handling, and a more consistent settings layout for common controls.
-- Full version history is now maintained in [CHANGELOG.md](CHANGELOG.md).
-
-## Maintenance Docs
-- Version history: [CHANGELOG.md](CHANGELOG.md)
-- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Current latest version: `v0.1.8` (2026-03-11)
+- This release rolls up the latest protocol compatibility work, login-path alignment, gateway error handling, desktop interaction fixes, Web auth hardening, and long-term maintainability refactors; see [CHANGELOG.md](CHANGELOG.md) for full history.
+- Protocol compatibility keeps tightening around Codex / OpenAI behavior: `/v1/chat/completions`, `/v1/responses`, and Claude `/v1/messages` are now more closely aligned, including multi-MCP tool preservation, long tool-name shortening, and response restoration for Cherry Studio, OpenClaw, Claude Code, and similar clients.
+- The Codex login-account request path is now closer to upstream behavior: ChatGPT-backed turns now use `access_token` directly, no longer mixing in `api_key_access_token` semantics, and the default `https://api.openai.com/v1` fallback has been removed so local fallback errors no longer rewrite upstream challenge / `403` outcomes.
+- The `401` recovery chain is now in place as well: when a ChatGPT login-account request returns `401`, CodexManager refreshes the local `access_token` with the stored `refresh_token` and retries the current request once, replacing the older stateless `401` retry behavior.
+- Gateway runtime and diagnostics are stronger: synthetic gateway failures now return structured OpenAI-style `error.message / error.type / error.code` payloads while keeping trace and error-code headers, long-running SSE turns are more resilient to idle disconnects, and the Settings page now exposes upstream stream timeout and SSE keepalive controls with runtime hot reload.
+- Desktop behavior was tightened as well: startup now restores dashboard / account / request-log snapshots earlier, successful login refreshes the accounts table automatically, and platform-key creation plus upstream-proxy save flows were cleaned up.
+- The Web auth flow is safer: `codexmanager-web` still persists the password, but authenticated sessions are now scoped to the current Web process, so old cookies do not survive a full close-and-reopen cycle.
+- The project is also undergoing long-term maintainability refactoring: the frontend entry/runtime layers, settings flow, request-log UI, Tauri command surface, service lifecycle, gateway protocol adapter, HTTP bridge, and upstream execution flow have all been split further into clearer module boundaries.
+- The release pipeline stays consolidated under `release-all.yml` for one-click Windows / macOS / Linux publishing, with local frontend build fallback when prebuilt artifacts are unavailable.
 
 ## Features
-- Account pool management: group, tag, sort, note
-- Bulk import / export: supports multi-file import, desktop-only recursive folder import for JSON files, and one-file-per-account export
-- Usage dashboard: supports 5-hour + 7-day dual windows, and accounts that only return a 7-day single window (for example free weekly quota)
+- Account pool management: groups, tags, sorting, notes
+- Bulk import / export: multi-file import, recursive desktop folder import for JSON, one-file-per-account export
+- Usage dashboard: 5-hour + 7-day windows, plus accounts that only expose a 7-day window
 - OAuth login: browser flow + manual callback parsing
-- Platform keys: create, disable, delete, bind model
-- Local service: auto-start with configurable port
-- Local gateway: OpenAI-compatible entry for CLI/tools
+- Platform keys: create, disable, delete, model binding
+- Local service with configurable port
+- Local OpenAI-compatible gateway for CLI and third-party tools
 
 ## Screenshots
 ![Dashboard](assets/images/dashboard.png)
@@ -42,33 +48,62 @@ A local desktop + service toolkit for managing a Codex-compatible ChatGPT accoun
 ![Logs](assets/images/log.png)
 ![Settings](assets/images/themes.png)
 
-## Tech Stack
-- Frontend: Vite + vanilla JavaScript
-- Desktop: Tauri (Rust)
-- Service: Rust (local HTTP/RPC + Gateway)
+## Quick Start
+1. Launch the desktop app and click `Start Service`.
+2. Go to Accounts, add an account, and complete authorization.
+3. If callback parsing fails, paste the callback URL manually.
+4. Refresh usage and confirm the account status.
+
+## Page Overview
+### Desktop
+- Accounts: bulk import/export, refresh accounts and usage
+- Platform Keys: bind keys by model and inspect request logs
+- Settings: manage ports, proxy, theme, auto-update, and background behavior
+
+### Service Edition
+- `codexmanager-service`: local OpenAI-compatible gateway
+- `codexmanager-web`: browser-based management UI
+- `codexmanager-start`: one command to launch service + web
+
+## Core Docs
+- Version history: [CHANGELOG.md](CHANGELOG.md)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Testing baseline: [TESTING.md](TESTING.md)
+- Security: [SECURITY.md](SECURITY.md)
+- Docs index: [docs/README.md](docs/README.md)
+
+## Topic Pages
+| Page | Content |
+| --- | --- |
+| [Runtime and deployment guide](docs/report/20260310122606850_运行与部署指南.md) | First launch, Docker, Service edition, macOS allowlist |
+| [Environment variables and runtime config](docs/report/20260309195355187_环境变量与运行配置说明.md) | App config, proxy, listen address, database, Web security |
+| [FAQ and account-hit rules](docs/report/20260310122606852_FAQ与账号命中规则.md) | Account hit logic, challenge blocks, import/export, common issues |
+| [Minimal troubleshooting guide](docs/report/20260307234235414_最小排障手册.md) | Fast path for service startup, forwarding, and model refresh issues |
+| [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) | Local build, Tauri packaging, Release workflow, script flags |
+| [Release assets guide](docs/release/20260309195355216_发布与产物说明.md) | Platform artifacts, naming, release vs pre-release |
+| [Script and release responsibility matrix](docs/report/20260309195735631_脚本与发布职责对照.md) | Which script owns which step |
+| [Protocol regression checklist](docs/report/20260309195735632_协议兼容回归清单.md) | `/v1/chat/completions`, `/v1/responses`, tools regression items |
+| [CHANGELOG.md](CHANGELOG.md) | Latest release notes, unreleased changes, and full version history |
 
 ## Project Structure
 ```text
 .
-├─ apps/                # Frontend + Tauri desktop app
+├─ apps/                # Frontend and Tauri desktop app
 │  ├─ src/
 │  ├─ src-tauri/
 │  └─ dist/
-├─ crates/              # Rust core/service
+├─ crates/              # Rust core/service crates
 │  ├─ core
 │  ├─ service
-│  ├─ start              # Service edition starter (launches service + web)
-│  └─ web                # Service edition Web UI (optional embedded assets + /api/rpc proxy)
-├─ scripts/             # build/release scripts
-├─ portable/            # portable output
+│  ├─ start              # Service starter (launches service + web)
+│  └─ web                # Service Web UI (optional embedded assets + /api/rpc proxy)
+├─ docs/                # Formal project documentation
+├─ scripts/             # Build and release scripts
 └─ README.en.md
 ```
 
-## Quick Start
-1. Launch desktop app and click "Start Service".
-2. Add accounts in Account Management and finish OAuth.
-3. If callback fails, paste callback URL into manual parser.
-4. Refresh usage and verify account status.
+## Acknowledgements And References
 
 ## Import / Export Accounts
 - `Bulk Import`: choose multiple `.json/.txt` files and import them in one run.
@@ -409,15 +444,20 @@ Notes:
 This project references the following open-source project for gateway protocol adaptation and stability hardening ideas:
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+- CPA (CLIProxyAPI): this project references its protocol adaptation, request forwarding, and compatibility design <https://github.com/router-for-me/CLIProxyAPI>
 
-Related implementation points:
+Main reference areas:
 - `crates/service/src/gateway/protocol_adapter/request_mapping.rs`
-- `crates/service/src/gateway/upstream/transport.rs`
+- `crates/service/src/gateway/protocol_adapter/response_conversion/`
+- `crates/service/src/gateway/upstream/`
 
 ## Contact
+
 <p align="center">
-  <img src="assets/images/group.jpg" alt="Group QR Code" width="280" />
+  <img src="assets/images/group.jpg" alt="Telegram Group QR Code" width="280" />
+  <img src="assets/images/qq_group.jpg" alt="QQ Group QR Code" width="280" />
 </p>
 
 - Telegram group: <https://t.me/+8o2Eu7GPMIFjNDM1>
+- QQ group: scan the QR code
 - WeChat Official Account: 七线牛马

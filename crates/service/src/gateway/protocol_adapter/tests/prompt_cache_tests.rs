@@ -1,4 +1,6 @@
-use super::*;
+use super::{PromptCache, PromptCacheConfig};
+use std::collections::{BTreeMap, HashMap};
+use std::time::{Duration, Instant};
 
 fn new_test_cache(now: Instant, config: PromptCacheConfig) -> PromptCache {
     PromptCache {

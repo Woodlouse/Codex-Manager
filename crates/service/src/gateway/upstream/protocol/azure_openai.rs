@@ -235,7 +235,9 @@ pub(in super::super) fn proxy_azure_request(
     let (url, _) = super::super::super::compute_upstream_url(base, path);
     let client = super::super::super::upstream_client();
     let mut builder = client.request(method.clone(), &url);
-    if let Some(timeout) = super::super::deadline::send_timeout(request_deadline, is_stream) {
+    if let Some(timeout) =
+        super::super::support::deadline::send_timeout(request_deadline, is_stream)
+    {
         builder = builder.timeout(timeout);
     }
 
@@ -268,7 +270,8 @@ pub(in super::super) fn proxy_azure_request(
             // 这里用 fresh client 再试一次，避免必须重启/重连。
             let fresh_client = super::super::super::fresh_upstream_client();
             let mut retry_builder = fresh_client.request(method.clone(), &url);
-            if let Some(timeout) = super::super::deadline::send_timeout(request_deadline, is_stream)
+            if let Some(timeout) =
+                super::super::support::deadline::send_timeout(request_deadline, is_stream)
             {
                 retry_builder = retry_builder.timeout(timeout);
             }
@@ -359,6 +362,7 @@ pub(in super::super) fn proxy_azure_request(
         upstream,
         inflight_guard,
         response_adapter,
+        path,
         Some(tool_name_restore_map),
         is_stream,
         Some(trace_id),

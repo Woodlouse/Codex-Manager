@@ -206,6 +206,10 @@
     padding-right: 0;
   }
 
+  .settings-transport-main {
+    grid-template-columns: 1fr;
+  }
+
   .settings-poll-item {
     grid-template-columns: minmax(0, 1fr) 104px;
     align-items: center;

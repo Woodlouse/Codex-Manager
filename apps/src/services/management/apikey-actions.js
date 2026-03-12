@@ -1,5 +1,5 @@
-import * as api from "../../api";
-import { copyText } from "../../utils/clipboard";
+import * as api from "../../api.js";
+import { copyText } from "../../utils/clipboard.js";
 
 export function createApiKeyActions({
   dom,
@@ -11,6 +11,8 @@ export function createApiKeyActions({
   refreshApiKeys,
   populateApiKeyModelSelect,
   renderApiKeys,
+  closeApiKeyModal,
+  apiClient = api,
 }) {
   let actions = null;
 
@@ -68,7 +70,7 @@ export function createApiKeyActions({
       const staticHeadersJson = isAzureProtocol && azureApiKey
         ? JSON.stringify({ "api-key": azureApiKey })
         : null;
-      const res = await api.serviceApiKeyCreate(
+      const res = await apiClient.serviceApiKeyCreate(
         dom.inputApiKeyName.value.trim() || null,
         modelSlug,
         reasoningEffort,
@@ -83,11 +85,7 @@ export function createApiKeyActions({
         return;
       }
       dom.apiKeyValue.value = res && res.key ? res.key : "";
-      try {
-        await refreshApiModelsNow({ silent: true, button: null });
-      } catch (err) {
-        showToast(`模型列表刷新失败：${err instanceof Error ? err.message : String(err)}`, "error");
-      }
+      closeApiKeyModal?.();
       if (await refreshApiKeyList()) {
         showToast("平台密钥创建成功");
       } else {
@@ -107,7 +105,7 @@ export function createApiKeyActions({
     if (!confirmed) return;
     const ok = await ensureConnected();
     if (!ok) return;
-    const res = await api.serviceApiKeyDelete(item.id);
+    const res = await apiClient.serviceApiKeyDelete(item.id);
     if (res && res.ok === false) {
       showToast(res.error || "平台密钥删除失败", "error");
       return;
@@ -124,9 +122,9 @@ export function createApiKeyActions({
     const isDisabled = String(item.status || "").toLowerCase() === "disabled";
     let result;
     if (isDisabled) {
-      result = await api.serviceApiKeyEnable(item.id);
+      result = await apiClient.serviceApiKeyEnable(item.id);
     } else {
-      result = await api.serviceApiKeyDisable(item.id);
+      result = await apiClient.serviceApiKeyDisable(item.id);
     }
     if (result && result.ok === false) {
       showToast(result.error || "平台密钥状态更新失败", "error");
@@ -143,7 +141,7 @@ export function createApiKeyActions({
     if (!ok) return;
     const normalizedModel = modelSlug || null;
     const normalizedEffort = normalizedModel ? (reasoningEffort || null) : null;
-    const res = await api.serviceApiKeyUpdateModel(item.id, normalizedModel, normalizedEffort, {
+    const res = await apiClient.serviceApiKeyUpdateModel(item.id, normalizedModel, normalizedEffort, {
       protocolType: item.protocolType || "openai_compat",
       upstreamBaseUrl: item.upstreamBaseUrl || null,
       staticHeadersJson: item.staticHeadersJson || null,
@@ -160,7 +158,7 @@ export function createApiKeyActions({
     await withButtonBusy(button, "复制中...", async () => {
       const ok = await ensureConnected();
       if (!ok) return;
-      const res = await api.serviceApiKeyReadSecret(item.id);
+      const res = await apiClient.serviceApiKeyReadSecret(item.id);
       const secret = res && typeof res.key === "string" ? res.key.trim() : "";
       if (!secret) {
         showToast("该密钥创建于旧版本，无法找回明文，请删除后重新创建", "error");

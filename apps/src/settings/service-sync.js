@@ -51,6 +51,7 @@ export function createSettingsServiceSync(deps = {}) {
     serviceGatewayRouteStrategySet,
     serviceGatewayHeaderPolicySet,
     serviceGatewayUpstreamProxySet,
+    serviceGatewayTransportSet,
     serviceGatewayBackgroundTasksSet,
     readRouteStrategySetting,
     saveRouteStrategySetting,
@@ -67,6 +68,12 @@ export function createSettingsServiceSync(deps = {}) {
     setUpstreamProxyHint,
     normalizeUpstreamProxyUrl,
     upstreamProxyHintText = "",
+    readGatewayTransportSetting,
+    saveGatewayTransportSetting,
+    setGatewayTransportForm,
+    normalizeGatewayTransportSettings,
+    setGatewayTransportHint,
+    gatewayTransportHintText = "",
     readBackgroundTasksSetting,
     saveBackgroundTasksSetting,
     setBackgroundTasksForm,
@@ -81,6 +88,8 @@ export function createSettingsServiceSync(deps = {}) {
   let cpaNoCookieHeaderModeSyncedProbeId = -1;
   let upstreamProxySyncInFlight = null;
   let upstreamProxySyncedProbeId = -1;
+  let gatewayTransportSyncInFlight = null;
+  let gatewayTransportSyncedProbeId = -1;
   let backgroundTasksSyncInFlight = null;
   let backgroundTasksSyncedProbeId = -1;
 
@@ -221,6 +230,58 @@ export function createSettingsServiceSync(deps = {}) {
     }
   }
 
+  function resolveGatewayTransportSettingsFromPayload(payload) {
+    return normalizeGatewayTransportSettings({
+      sseKeepaliveIntervalMs: pickFirstValue(payload, [
+        "sseKeepaliveIntervalMs",
+        "result.sseKeepaliveIntervalMs",
+      ]),
+      upstreamStreamTimeoutMs: pickFirstValue(payload, [
+        "upstreamStreamTimeoutMs",
+        "result.upstreamStreamTimeoutMs",
+      ]),
+    });
+  }
+
+  async function applyGatewayTransportToService(settings, { silent = true } = {}) {
+    const normalized = normalizeGatewayTransportSettings(settings);
+    if (gatewayTransportSyncInFlight) {
+      return gatewayTransportSyncInFlight;
+    }
+    gatewayTransportSyncInFlight = (async () => {
+      const connected = await ensureConnected();
+      updateServiceToggle();
+      if (!connected) {
+        if (!silent) {
+          showToast("服务未连接，稍后会自动应用网关传输设置", "error");
+        }
+        return false;
+      }
+      const response = await serviceGatewayTransportSet(normalized);
+      const applied = resolveGatewayTransportSettingsFromPayload(response);
+      saveGatewayTransportSetting(applied);
+      setGatewayTransportForm(applied);
+      setGatewayTransportHint(gatewayTransportHintText);
+      gatewayTransportSyncedProbeId = state.serviceProbeId;
+      if (!silent) {
+        showToast("网关传输设置已保存");
+      }
+      return true;
+    })();
+
+    try {
+      return await gatewayTransportSyncInFlight;
+    } catch (err) {
+      if (!silent) {
+        setGatewayTransportHint(`保存失败：${normalizeErrorMessage(err)}`);
+        showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+      }
+      return false;
+    } finally {
+      gatewayTransportSyncInFlight = null;
+    }
+  }
+
   function resolveBackgroundTasksSettingsFromPayload(payload) {
     return normalizeBackgroundTasksSettings({
       usagePollingEnabled: pickBooleanValue(payload, [
@@ -335,6 +396,9 @@ export function createSettingsServiceSync(deps = {}) {
     if (upstreamProxySyncedProbeId !== state.serviceProbeId) {
       await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
     }
+    if (gatewayTransportSyncedProbeId !== state.serviceProbeId) {
+      await applyGatewayTransportToService(readGatewayTransportSetting(), { silent: true });
+    }
     if (backgroundTasksSyncedProbeId !== state.serviceProbeId) {
       await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
     }
@@ -347,6 +411,7 @@ export function createSettingsServiceSync(deps = {}) {
     await applyRouteStrategyToService(readRouteStrategySetting(), { silent: true });
     await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
     await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
+    await applyGatewayTransportToService(readGatewayTransportSetting(), { silent: true });
     await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
   }
 
@@ -354,6 +419,7 @@ export function createSettingsServiceSync(deps = {}) {
     applyRouteStrategyToService,
     applyCpaNoCookieHeaderModeToService,
     applyUpstreamProxyToService,
+    applyGatewayTransportToService,
     applyBackgroundTasksToService,
     syncRuntimeSettingsForCurrentProbe,
     syncRuntimeSettingsOnStartup,

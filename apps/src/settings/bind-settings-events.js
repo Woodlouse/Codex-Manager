@@ -42,6 +42,14 @@ export function bindSettingsEvents(context) {
     normalizeUpstreamProxyUrl,
     applyUpstreamProxyToService,
     upstreamProxyHintText,
+    readGatewayTransportSetting,
+    readGatewayTransportForm,
+    saveGatewayTransportSetting,
+    setGatewayTransportForm,
+    normalizeGatewayTransportSettings,
+    setGatewayTransportHint,
+    applyGatewayTransportToService,
+    gatewayTransportHintText,
     readBackgroundTasksSetting,
     readBackgroundTasksForm,
     saveBackgroundTasksSetting,
@@ -215,6 +223,44 @@ export function bindSettingsEvents(context) {
           saveUpstreamProxyUrlSetting(previousValue);
           setUpstreamProxyInput(previousValue);
           setUpstreamProxyHint(`保存失败：${normalizeErrorMessage(err)}`);
+          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+        }
+      });
+    });
+  }
+
+  if (dom.gatewayTransportSave && dom.gatewayTransportSave.dataset.bound !== "1") {
+    dom.gatewayTransportSave.dataset.bound = "1";
+    dom.gatewayTransportSave.addEventListener("click", () => {
+      void withButtonBusy(dom.gatewayTransportSave, "保存中...", async () => {
+        const previousSettings = readGatewayTransportSetting();
+        const parsed = readGatewayTransportForm();
+        if (!parsed.ok) {
+          setGatewayTransportHint(parsed.error);
+          showToast(parsed.error, "error");
+          return;
+        }
+        const nextSettings = parsed.settings;
+        saveGatewayTransportSetting(nextSettings);
+        setGatewayTransportForm(nextSettings);
+        try {
+          const settings = await saveAppSettingsPatch(nextSettings);
+          const resolved = normalizeGatewayTransportSettings({
+            sseKeepaliveIntervalMs: settings.sseKeepaliveIntervalMs,
+            upstreamStreamTimeoutMs: settings.upstreamStreamTimeoutMs,
+          });
+          saveGatewayTransportSetting(resolved);
+          setGatewayTransportForm(resolved);
+          if (isTauriRuntime()) {
+            await applyGatewayTransportToService(resolved, { silent: false });
+            return;
+          }
+          setGatewayTransportHint(gatewayTransportHintText);
+          showToast("网关传输设置已保存");
+        } catch (err) {
+          saveGatewayTransportSetting(previousSettings);
+          setGatewayTransportForm(previousSettings);
+          setGatewayTransportHint(`保存失败：${normalizeErrorMessage(err)}`);
           showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
         }
       });

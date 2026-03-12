@@ -1,6 +1,8 @@
 use codexmanager_core::storage::{now_ts, Storage};
 use std::collections::HashMap;
 
+use super::normalize_optional_text;
+
 pub(crate) fn open_app_settings_storage() -> Option<Storage> {
     crate::process_env::ensure_default_db_path();
     let path = std::env::var("CODEXMANAGER_DB_PATH").ok()?;
@@ -34,10 +36,4 @@ pub(crate) fn save_persisted_app_setting(key: &str, value: Option<&str>) -> Resu
 
 pub(crate) fn save_persisted_bool_setting(key: &str, value: bool) -> Result<(), String> {
     save_persisted_app_setting(key, Some(if value { "1" } else { "0" }))
-}
-
-fn normalize_optional_text(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
 }

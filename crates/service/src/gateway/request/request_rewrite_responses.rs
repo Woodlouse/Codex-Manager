@@ -92,6 +92,70 @@ pub(super) fn ensure_store_false(path: &str, obj: &mut serde_json::Map<String, V
     true
 }
 
+pub(super) fn normalize_dynamic_tools_to_tools(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    if !is_responses_path(path) {
+        return false;
+    }
+
+    let dynamic_tools = obj
+        .remove("dynamic_tools")
+        .or_else(|| obj.remove("dynamicTools"));
+    let Some(dynamic_tools) = dynamic_tools else {
+        return false;
+    };
+    let dynamic_tools = dynamic_tools.as_array().cloned().unwrap_or_default();
+
+    let tools = obj
+        .entry("tools".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    if !tools.is_array() {
+        *tools = Value::Array(Vec::new());
+    }
+    let Some(tools_array) = tools.as_array_mut() else {
+        return true;
+    };
+
+    for dynamic_tool in dynamic_tools {
+        let Some(tool_obj) = dynamic_tool.as_object() else {
+            continue;
+        };
+        let Some(name) = tool_obj
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+
+        let description = tool_obj
+            .get("description")
+            .cloned()
+            .unwrap_or_else(|| Value::String(String::new()));
+        let parameters = tool_obj
+            .get("input_schema")
+            .or_else(|| tool_obj.get("inputSchema"))
+            .or_else(|| tool_obj.get("parameters"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({ "type": "object", "properties": {} }));
+
+        let mut mapped = serde_json::Map::new();
+        mapped.insert("type".to_string(), Value::String("function".to_string()));
+        mapped.insert("name".to_string(), Value::String(name.to_string()));
+        mapped.insert("description".to_string(), description);
+        mapped.insert("parameters".to_string(), parameters);
+        if let Some(strict) = tool_obj.get("strict") {
+            mapped.insert("strict".to_string(), strict.clone());
+        }
+        tools_array.push(Value::Object(mapped));
+    }
+
+    true
+}
+
 pub(super) fn apply_reasoning_override(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,

@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "codex_manager",
+  "project_id": "39b2606f-a1a0-456d-b991-5882666551eb"
+}

@@ -35,9 +35,43 @@ CodexManager 由两类运行模式组成：
 └─ .github/workflows/     # CI / release workflow
 ```
 
-## 3. 运行关系
+## 3. 核心复杂域入口索引
 
-### 3.1 桌面模式
+### 3.1 前端总控入口
+
+- `apps/src/main.js`：前端启动装配入口
+- `apps/src/runtime/app-bootstrap.js`：界面初始化编排
+- `apps/src/runtime/app-runtime.js`：刷新流程与运行期协同
+- `apps/src/settings/controller.js`：设置域门面，继续向子模块分发
+
+### 3.2 桌面端壳层入口
+
+- `apps/src-tauri/src/lib.rs`：Tauri 应用装配入口
+- `apps/src-tauri/src/settings_commands.rs`：桌面端设置桥接命令
+- `apps/src-tauri/src/service_runtime.rs`：桌面内嵌 service 生命周期
+- `apps/src-tauri/src/rpc_client.rs`：桌面端 RPC 调用基础设施
+
+### 3.3 service 网关与协议入口
+
+- `crates/service/src/lib.rs`：service 总入口与运行时装配
+- `crates/service/src/http/`：HTTP 路由入口
+- `crates/service/src/rpc_dispatch/`：RPC 分发入口
+- `crates/service/src/gateway/mod.rs`：网关聚合入口
+- `crates/service/src/gateway/observability/http_bridge.rs`：请求追踪、协议桥接、日志写入
+- `crates/service/src/gateway/protocol_adapter/request_mapping.rs`：OpenAI/Codex 输入映射
+- `crates/service/src/gateway/protocol_adapter/response_conversion.rs`：非流式结果总转换入口
+- `crates/service/src/gateway/protocol_adapter/response_conversion/sse_conversion.rs`：流式 SSE 转换入口
+- `crates/service/src/gateway/protocol_adapter/response_conversion/openai_chat.rs`：OpenAI Chat 结果适配
+- `crates/service/src/gateway/protocol_adapter/response_conversion/tool_mapping.rs`：工具名缩短与还原
+
+### 3.4 设置与运行配置入口
+
+- `crates/service/src/app_settings/`：设置持久化、环境变量覆盖、运行时同步
+- `crates/service/src/web_access.rs`：Web 访问密码与会话令牌
+
+## 4. 运行关系
+
+### 4.1 桌面模式
 
 桌面模式由以下部分组成：
 
@@ -52,7 +86,7 @@ CodexManager 由两类运行模式组成：
 3. 桌面端通过 RPC 或本地地址与 `codexmanager-service` 通信。
 4. 前端 UI 展示账号、用量、请求日志、设置等页面。
 
-### 3.2 Service 模式
+### 4.2 Service 模式
 
 Service 模式由以下二进制组成：
 
@@ -66,9 +100,9 @@ Service 模式由以下二进制组成：
 - `codexmanager-web`：Web UI 服务壳，可直接提供前端页面，并代理到本地 service。
 - `codexmanager-start`：面向发布包的一键启动器，负责同时拉起 service 和 web。
 
-## 4. 模块职责
+## 5. 模块职责
 
-### 4.1 `apps/src/`
+### 5.1 `apps/src/`
 
 主要负责：
 
@@ -78,11 +112,7 @@ Service 模式由以下二进制组成：
 - 调用本地 API / Tauri command
 - 设置页与账号页的前端逻辑
 
-当前现状：
-
-- `apps/src/main.js` 仍承担较多总控职责，是后续需要逐步拆分的重点区域。
-
-### 4.2 `apps/src-tauri/`
+### 5.2 `apps/src-tauri/`
 
 主要负责：
 
@@ -92,11 +122,7 @@ Service 模式由以下二进制组成：
 - 桌面更新与安装器行为
 - 将前端操作桥接到 service / 本地运行时
 
-当前现状：
-
-- `apps/src-tauri/src/lib.rs` 已抽出 `rpc_client.rs`、`app_storage.rs`、`service_runtime.rs`、`settings_commands.rs`，当前主要剩余窗口/托盘生命周期编排。
-
-### 4.3 `crates/core/`
+### 5.3 `crates/core/`
 
 主要负责：
 
@@ -105,7 +131,7 @@ Service 模式由以下二进制组成：
 - 认证 / usage 等核心基础逻辑
 - 可被 service 复用的数据访问能力
 
-### 4.4 `crates/service/`
+### 5.4 `crates/service/`
 
 主要负责：
 
@@ -123,14 +149,7 @@ Service 模式由以下二进制组成：
 - `src/rpc_dispatch/`：RPC 分发
 - `src/account/`、`src/apikey/`、`src/requestlog/`、`src/usage/`：领域逻辑
 
-当前现状：
-
-- `crates/service/src/app_settings/` 已开始承接设置持久化与环境变量覆盖逻辑。
-- `crates/service/src/web_access.rs` 已独立承接 Web 访问密码与会话令牌逻辑。
-- `src/gateway/protocol_adapter/response_conversion/` 已拆出 `openai_chat.rs` 与 `tool_mapping.rs`，`response_conversion.rs` 目前更多承担总路由。
-- `crates/service/src/lib.rs` 仍是后续需要继续拆分的服务端总控文件之一。
-
-### 4.5 `crates/web/`
+### 5.5 `crates/web/`
 
 主要负责：
 
@@ -138,16 +157,16 @@ Service 模式由以下二进制组成：
 - 挂载或代理到 service
 - 可选把 `apps/dist` 内嵌到二进制，形成单文件发布物
 
-### 4.6 `crates/start/`
+### 5.6 `crates/start/`
 
 主要负责：
 
 - 在 Service 发布包里提供一个更直接的启动入口
 - 协调 service 与 web 的生命周期
 
-## 5. 数据与配置
+## 6. 数据与配置
 
-### 5.1 数据库
+### 6.1 数据库
 
 当前项目使用 SQLite。
 数据库迁移位于：
@@ -161,7 +180,7 @@ Service 模式由以下二进制组成：
 - token 统计
 - app settings
 
-### 5.2 运行配置
+### 6.2 运行配置
 
 配置主要来源包括：
 
@@ -176,7 +195,7 @@ Service 模式由以下二进制组成：
 - 运行时可调配置优先通过设置页 + `app_settings` 管理。
 - 设置变更不应无边界地散落在桌面端、前端和 service 各处。
 
-## 6. 请求链路概览
+## 7. 请求链路概览
 
 典型请求链路如下：
 
@@ -191,11 +210,9 @@ Service 模式由以下二进制组成：
    - `tool_calls` / tools 映射与聚合
 5. 结果回写请求日志和统计信息，再返回给调用方。
 
-这也是当前最需要自动化回归覆盖的路径之一。
+## 8. 构建与发布链路
 
-## 7. 构建与发布链路
-
-### 7.1 本地开发构建
+### 8.1 本地开发构建
 
 前端：
 
@@ -216,12 +233,7 @@ Rust：
 - `scripts/rebuild-linux.sh`
 - `scripts/rebuild-macos.sh`
 
-发布辅助脚本：
-
-- `scripts/release/assert-release-version.ps1`
-- `scripts/release/disable-tauri-before-build.ps1`
-
-### 7.2 版本管理
+### 8.2 版本管理
 
 版本目前由根工作区统一维护：
 
@@ -236,7 +248,7 @@ Rust：
 
 - `scripts/bump-version.ps1`
 
-### 7.3 GitHub Release
+### 8.3 GitHub Release
 
 主要发布入口：
 
@@ -249,24 +261,16 @@ Rust：
 - 上传 GitHub Release 附件
 - 根据 tag / `prerelease` 输入决定发布类型
 
-当前维护重点：
+## 9. 当前结构风险
 
-- 发布脚本参数、README 说明、workflow 输入必须保持一致。
-- 三平台共有逻辑应逐步复用，避免继续复制粘贴扩张。
+当前仓库需要重点关注以下问题：
 
-## 8. 当前结构风险
+1. `apps/src-tauri/src/lib.rs` 仍偏厚，桌面壳层装配与命令实现尚需继续拆开。
+2. `crates/service/src/lib.rs` 配置、运行时同步、副作用边界不够清晰。
+3. `crates/service/src/gateway/protocol_adapter/response_conversion.rs` 兼容分支较多，回归风险高。
+4. `.github/workflows/release-all.yml` 仍然较长，多平台逻辑需要持续约束。
 
-为方便后续协作者判断风险，当前仓库需要重点关注以下问题：
-
-1. `apps/src/main.js` 过大，前端总控边界不够清晰。
-2. `apps/src-tauri/src/lib.rs` 过大，桌面壳层偏厚。
-3. `crates/service/src/lib.rs` 配置、运行时同步、副作用边界不够清晰。
-4. `crates/service/src/gateway/protocol_adapter/response_conversion.rs` 兼容分支较多，回归风险高。
-5. `.github/workflows/release-all.yml` 过长，多平台逻辑复用不足。
-
-这些文件不是不能改，而是修改前必须先确认是否应该拆职责，而不是继续往里堆逻辑。
-
-## 9. 建议的改动落点
+## 10. 建议的改动落点
 
 为了减少结构污染，新增需求尽量按以下原则落点：
 

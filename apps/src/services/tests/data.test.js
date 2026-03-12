@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { state } from "../../state.js";
-import { refreshAccountsPage, refreshRequestLogs } from "../data.js";
+import {
+  hydrateFromStartupSnapshot,
+  refreshAccountsPage,
+  refreshRequestLogs,
+} from "../data.js";
 
 function deferred() {
   let resolve = null;
@@ -123,6 +127,73 @@ test("refreshAccountsPage falls back to local mode when backend does not return 
     assert.equal(state.accountPageItems.length, 0);
     assert.equal(state.accountList.length, 2);
     assert.equal(state.accountList[0].id, "acc-1");
+  } finally {
+    globalThis.window = oldWindow;
+  }
+});
+
+test("hydrateFromStartupSnapshot fills startup cache state in one shot", async () => {
+  const oldWindow = globalThis.window;
+
+  try {
+    globalThis.window = {
+      __TAURI__: {
+        core: {
+          invoke: async (method) => {
+            if (method === "service_startup_snapshot") {
+              return {
+                result: {
+                  accounts: [
+                    { id: "acc-1", label: "账号1", groupName: "TEAM", sort: 0, status: "active" },
+                    { id: "acc-2", label: "账号2", groupName: "TEAM", sort: 1, status: "active" },
+                  ],
+                  usageSnapshots: [
+                    { accountId: "acc-1", availabilityStatus: "available", usedPercent: 20, windowMinutes: 300 },
+                  ],
+                  apiKeys: [
+                    { id: "gk_1", name: "主 Key", protocolType: "openai_compat", status: "active" },
+                  ],
+                  apiModelOptions: [
+                    { slug: "gpt-5.3-codex", displayName: "GPT-5.3 Codex" },
+                  ],
+                  manualPreferredAccountId: "acc-2",
+                  requestLogTodaySummary: {
+                    todayTokens: 123,
+                    cachedInputTokens: 45,
+                    reasoningOutputTokens: 6,
+                    estimatedCost: 1.23,
+                  },
+                  requestLogs: [
+                    { id: "log-1", accountId: "acc-1", createdAt: 1, method: "POST", statusCode: 200 },
+                  ],
+                },
+              };
+            }
+            throw new Error(`unexpected invoke: ${method}`);
+          },
+        },
+      },
+    };
+
+    state.accountPageSize = 5;
+    state.accountList = [];
+    state.usageList = [];
+    state.apiKeyList = [];
+    state.requestLogList = [];
+
+    await hydrateFromStartupSnapshot({ requestLogLimit: 50 });
+
+    assert.equal(state.accountList.length, 2);
+    assert.equal(state.usageList.length, 1);
+    assert.equal(state.apiKeyList.length, 1);
+    assert.equal(state.apiModelOptions.length, 1);
+    assert.equal(state.manualPreferredAccountId, "acc-2");
+    assert.equal(state.requestLogTodaySummary.todayTokens, 123);
+    assert.equal(state.requestLogList.length, 1);
+    assert.ok(state.requestLogList[0].__identity);
+    assert.equal(state.accountPageLoaded, true);
+    assert.equal(state.accountPageTotal, 2);
+    assert.equal(state.accountPageItems.length, 2);
   } finally {
     globalThis.window = oldWindow;
   }

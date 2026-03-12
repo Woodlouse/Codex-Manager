@@ -9,10 +9,10 @@ function createNormalizeAddr() {
     if (!raw) {
       return "localhost:48760";
     }
-    if (raw.includes(":")) {
-      return raw;
+    if (/^\d+$/.test(raw)) {
+      return `localhost:${raw}`;
     }
-    return `localhost:${raw}`;
+    return raw;
   };
 }
 
@@ -41,6 +41,8 @@ test("createSettingsController normalizes loaded snapshot and updates state.serv
       routeStrategy: "balanced",
       cpaNoCookieHeaderModeEnabled: "1",
       upstreamProxyUrl: " http://127.0.0.1:7890 ",
+      sseKeepaliveIntervalMs: "16000",
+      upstreamStreamTimeoutMs: "0",
       backgroundTasks: {
         usagePollIntervalSecs: "30",
       },
@@ -68,6 +70,8 @@ test("createSettingsController normalizes loaded snapshot and updates state.serv
   assert.equal(settings.routeStrategy, "balanced");
   assert.equal(settings.cpaNoCookieHeaderModeEnabled, true);
   assert.equal(settings.upstreamProxyUrl, "http://127.0.0.1:7890");
+  assert.equal(settings.sseKeepaliveIntervalMs, 16000);
+  assert.equal(settings.upstreamStreamTimeoutMs, 0);
   assert.equal(settings.backgroundTasks.usagePollIntervalSecs, 30);
   assert.equal(settings.webAccessPasswordConfigured, true);
   assert.equal(state.serviceAddr, "localhost:5050");
@@ -102,9 +106,41 @@ test("persistServiceAddrInput normalizes input and writes patch through settings
   ]);
 });
 
+test("persistServiceAddrInput preserves host-only address", async () => {
+  const state = {};
+  const dom = {
+    serviceAddrInput: {
+      value: " example.com ",
+    },
+  };
+  const patches = [];
+  const controller = createController({
+    dom,
+    state,
+    appSettingsSet: async (patch = {}) => {
+      patches.push(patch);
+      return patch;
+    },
+  });
+
+  const ok = await controller.persistServiceAddrInput();
+
+  assert.equal(ok, true);
+  assert.equal(dom.serviceAddrInput.value, "example.com");
+  assert.equal(state.serviceAddr, "example.com");
+  assert.deepEqual(patches, [
+    {
+      serviceAddr: "example.com",
+    },
+  ]);
+});
+
 test("createSettingsController exposes service listen mode actions used by main.js", () => {
   const controller = createController();
 
   assert.equal(typeof controller.applyServiceListenModeToService, "function");
   assert.equal(typeof controller.syncServiceListenModeOnStartup, "function");
+  assert.equal(typeof controller.normalizeUpstreamProxyUrl, "function");
+  assert.equal(typeof controller.initGatewayTransportSetting, "function");
+  assert.equal(typeof controller.readGatewayTransportForm, "function");
 });

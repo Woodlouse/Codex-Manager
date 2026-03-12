@@ -1,0 +1,157 @@
+use bytes::Bytes;
+use codexmanager_core::storage::Account;
+use reqwest::StatusCode;
+use std::time::{Duration, Instant};
+use tiny_http::Request;
+
+use super::super::support::{backoff, deadline};
+use super::transport::send_upstream_request;
+
+pub(super) enum StatelessRetryResult {
+    NotTriggered,
+    Upstream(reqwest::blocking::Response),
+    Terminal { status_code: u16, message: String },
+}
+
+fn should_trigger_stateless_retry(
+    status: u16,
+    strip_session_affinity: bool,
+    disable_challenge_stateless_retry: bool,
+) -> bool {
+    if strip_session_affinity {
+        return !disable_challenge_stateless_retry && matches!(status, 403 | 429);
+    }
+    if disable_challenge_stateless_retry {
+        return matches!(status, 404);
+    }
+    matches!(status, 403 | 404 | 429)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn retry_stateless_then_optional_alt(
+    client: &reqwest::blocking::Client,
+    method: &reqwest::Method,
+    primary_url: &str,
+    alt_url: Option<&str>,
+    request_deadline: Option<Instant>,
+    request: &Request,
+    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
+    body: &Bytes,
+    is_stream: bool,
+    upstream_cookie: Option<&str>,
+    auth_token: &str,
+    account: &Account,
+    strip_session_affinity: bool,
+    status: StatusCode,
+    debug: bool,
+    disable_challenge_stateless_retry: bool,
+) -> StatelessRetryResult {
+    if deadline::is_expired(request_deadline) {
+        return StatelessRetryResult::Terminal {
+            status_code: 504,
+            message: "upstream total timeout exceeded".to_string(),
+        };
+    }
+    if !should_trigger_stateless_retry(
+        status.as_u16(),
+        strip_session_affinity,
+        disable_challenge_stateless_retry,
+    ) {
+        return StatelessRetryResult::NotTriggered;
+    }
+    if debug {
+        log::warn!(
+            "event=gateway_upstream_stateless_retry path={} status={} account_id={}",
+            request.url(),
+            status.as_u16(),
+            account.id
+        );
+    }
+    if matches!(status.as_u16(), 403 | 429) {
+        if !backoff::sleep_with_exponential_jitter(
+            Duration::from_millis(120),
+            Duration::from_millis(900),
+            1,
+            request_deadline,
+        ) {
+            return StatelessRetryResult::Terminal {
+                status_code: 504,
+                message: "upstream total timeout exceeded".to_string(),
+            };
+        }
+    }
+    let mut response = match send_upstream_request(
+        client,
+        method,
+        primary_url,
+        request_deadline,
+        request,
+        incoming_headers,
+        body,
+        is_stream,
+        upstream_cookie,
+        auth_token,
+        account,
+        true,
+    ) {
+        Ok(resp) => resp,
+        Err(err) => {
+            log::warn!(
+                "event=gateway_stateless_retry_error path={} status=502 account_id={} err={}",
+                request.url(),
+                account.id,
+                err
+            );
+            return StatelessRetryResult::NotTriggered;
+        }
+    };
+
+    if let Some(alt_url) = alt_url {
+        if matches!(response.status().as_u16(), 400 | 404) {
+            if !backoff::sleep_with_exponential_jitter(
+                Duration::from_millis(80),
+                Duration::from_millis(500),
+                2,
+                request_deadline,
+            ) {
+                return StatelessRetryResult::Terminal {
+                    status_code: 504,
+                    message: "upstream total timeout exceeded".to_string(),
+                };
+            }
+            match send_upstream_request(
+                client,
+                method,
+                alt_url,
+                request_deadline,
+                request,
+                incoming_headers,
+                body,
+                is_stream,
+                upstream_cookie,
+                auth_token,
+                account,
+                true,
+            ) {
+                Ok(resp) => {
+                    response = resp;
+                }
+                Err(err) => {
+                    log::warn!(
+                        "event=gateway_stateless_alt_retry_error path={} status=502 account_id={} upstream_url={} err={}",
+                        request.url(),
+                        account.id,
+                        alt_url,
+                        err
+                    );
+                }
+            }
+        }
+    }
+
+    StatelessRetryResult::Upstream(response)
+}
+
+#[cfg(test)]
+#[path = "../tests/attempt_flow/stateless_retry_tests.rs"]
+mod tests;

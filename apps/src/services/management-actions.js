@@ -22,6 +22,7 @@ export function createManagementActions({
   refreshApiKeys,
   populateApiKeyModelSelect,
   renderApiKeys,
+  closeApiKeyModal,
 }) {
   const requestlogActions = createRequestLogActions({
     dom,
@@ -64,6 +65,7 @@ export function createManagementActions({
     refreshApiKeys,
     populateApiKeyModelSelect,
     renderApiKeys,
+    closeApiKeyModal,
   });
 
   return {

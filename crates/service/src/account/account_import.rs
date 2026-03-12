@@ -9,6 +9,10 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::time::Instant;
 
+use crate::account_identity::{
+    build_account_storage_id, build_fallback_subject_key, clean_value,
+    pick_existing_account_id_by_identity,
+};
 use crate::storage_helpers::{account_key, open_storage};
 
 const MAX_ERROR_ITEMS: usize = 50;
@@ -44,12 +48,21 @@ struct ImportTokenPayload {
     id_token: String,
     refresh_token: String,
     account_id_hint: Option<String>,
+    chatgpt_account_id_hint: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct ImportAccountMeta {
+    label: Option<String>,
+    issuer: Option<String>,
+    group_name: Option<String>,
+    workspace_id: Option<String>,
+    chatgpt_account_id: Option<String>,
 }
 
 #[derive(Default)]
 struct ExistingAccountIndex {
     by_id: HashMap<String, Account>,
-    by_chatgpt_account_id: HashMap<String, String>,
     next_sort: i64,
 }
 
@@ -61,34 +74,28 @@ impl ExistingAccountIndex {
             idx.next_sort = idx
                 .next_sort
                 .max(account.sort.saturating_add(ACCOUNT_SORT_STEP));
-            if let Some(chatgpt_account_id) = account.chatgpt_account_id.as_ref() {
-                let key = chatgpt_account_id.trim();
-                if !key.is_empty() {
-                    idx.by_chatgpt_account_id
-                        .entry(key.to_string())
-                        .or_insert_with(|| account.id.clone());
-                }
-            }
             idx.by_id.insert(account.id.clone(), account);
         }
         Ok(idx)
     }
 
-    fn find_existing_account_id(&self, logical_account_id: &str) -> Option<String> {
-        if self.by_id.contains_key(logical_account_id) {
-            return Some(logical_account_id.to_string());
-        }
-        None
+    fn find_existing_account_id(
+        &self,
+        chatgpt_account_id: Option<&str>,
+        workspace_id: Option<&str>,
+        fallback_subject_key: Option<&str>,
+        account_id_hint: Option<&str>,
+    ) -> Option<String> {
+        pick_existing_account_id_by_identity(
+            self.by_id.values(),
+            chatgpt_account_id,
+            workspace_id,
+            fallback_subject_key,
+            account_id_hint,
+        )
     }
 
     fn upsert_index(&mut self, account: &Account) {
-        if let Some(chatgpt_account_id) = account.chatgpt_account_id.as_ref() {
-            let key = chatgpt_account_id.trim();
-            if !key.is_empty() {
-                self.by_chatgpt_account_id
-                    .insert(key.to_string(), account.id.clone());
-            }
-        }
         self.by_id.insert(account.id.clone(), account.clone());
     }
 }
@@ -346,44 +353,61 @@ fn import_single_item(
     sequence: usize,
 ) -> Result<bool, String> {
     let payload = extract_token_payload(&item)?;
+    let meta = extract_account_meta(item);
     let claims = parse_id_token_claims(&payload.id_token).ok();
     let subject_account_id = claims
         .as_ref()
         .map(|c| c.sub.trim().to_string())
         .filter(|v| !v.is_empty());
     let chatgpt_account_id = clean_value(
-        payload
-            .account_id_hint
+        meta.chatgpt_account_id
             .clone()
+            .or_else(|| payload.chatgpt_account_id_hint.clone())
             .or_else(|| {
                 claims
                     .as_ref()
                     .and_then(|c| c.auth.as_ref()?.chatgpt_account_id.clone())
             })
             .or_else(|| extract_chatgpt_account_id(&payload.id_token))
-            .or_else(|| extract_chatgpt_account_id(&payload.access_token)),
+            .or_else(|| extract_chatgpt_account_id(&payload.access_token))
+            .or_else(|| payload.account_id_hint.clone()),
     );
 
     let workspace_id = clean_value(
-        claims
-            .as_ref()
-            .and_then(|c| c.workspace_id.clone())
+        meta.workspace_id
+            .clone()
+            .or_else(|| claims.as_ref().and_then(|c| c.workspace_id.clone()))
             .or_else(|| extract_workspace_id(&payload.id_token))
-            .or_else(|| extract_workspace_id(&payload.access_token)),
+            .or_else(|| extract_workspace_id(&payload.access_token))
+            .or_else(|| chatgpt_account_id.clone()),
     );
     let token_fingerprint = token_fingerprint(&payload.refresh_token);
-    let logical_account_id = resolve_logical_account_id(
-        &payload,
-        subject_account_id.as_deref(),
-        chatgpt_account_id.as_deref(),
-        workspace_id.as_deref(),
-        Some(token_fingerprint.as_str()),
-    )?;
+    let fallback_subject_key =
+        build_fallback_subject_key(subject_account_id.as_deref(), None::<&str>);
+    let account_id = index
+        .find_existing_account_id(
+            chatgpt_account_id.as_deref(),
+            workspace_id.as_deref(),
+            fallback_subject_key.as_deref(),
+            payload.account_id_hint.as_deref(),
+        )
+        .unwrap_or(resolve_logical_account_id(
+            &payload,
+            subject_account_id.as_deref(),
+            chatgpt_account_id.as_deref(),
+            workspace_id.as_deref(),
+            Some(token_fingerprint.as_str()),
+        )?);
 
-    let label = claims
-        .as_ref()
-        .and_then(|c| c.email.clone())
-        .filter(|v| !v.trim().is_empty())
+    let label = meta
+        .label
+        .clone()
+        .or_else(|| {
+            claims
+                .as_ref()
+                .and_then(|c| c.email.clone())
+                .filter(|v| !v.trim().is_empty())
+        })
         .or_else(|| {
             item.get("email")
                 .and_then(Value::as_str)
@@ -391,63 +415,70 @@ fn import_single_item(
                 .filter(|v| !v.is_empty())
         })
         .unwrap_or_else(|| format!("导入账号{:04}", sequence));
+    let default_issuer =
+        std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
+    let issuer = meta
+        .issuer
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(default_issuer);
+    let group_name = meta
+        .group_name
+        .clone()
+        .filter(|value| !value.trim().is_empty());
 
     let now = now_ts();
-    let existing_id = index.find_existing_account_id(&logical_account_id);
-    let (account_id, account, created) = if let Some(existing_id) = existing_id {
-        let existing = index
-            .by_id
-            .get(&existing_id)
-            .cloned()
-            .ok_or_else(|| format!("existing account not found in index: {existing_id}"))?;
-        let merged_chatgpt_account_id = chatgpt_account_id
-            .clone()
-            .or_else(|| clean_value(existing.chatgpt_account_id.clone()));
-        let merged_workspace_id = workspace_id
-            .clone()
-            .or_else(|| clean_value(existing.workspace_id.clone()));
-        let updated = Account {
-            id: existing.id.clone(),
-            label: if existing.label.trim().is_empty() {
-                label
-            } else {
-                existing.label.clone()
-            },
-            issuer: if existing.issuer.trim().is_empty() {
-                DEFAULT_ISSUER.to_string()
-            } else {
-                existing.issuer.clone()
-            },
-            chatgpt_account_id: merged_chatgpt_account_id,
-            workspace_id: merged_workspace_id,
-            group_name: existing
-                .group_name
+    let (account_id, account, created) =
+        if let Some(existing) = index.by_id.get(&account_id).cloned() {
+            let merged_chatgpt_account_id = chatgpt_account_id
                 .clone()
-                .filter(|value| !value.trim().is_empty())
-                .or_else(|| Some("IMPORT".to_string())),
-            sort: existing.sort,
-            status: "active".to_string(),
-            created_at: existing.created_at,
-            updated_at: now,
+                .or_else(|| clean_value(existing.chatgpt_account_id.clone()));
+            let merged_workspace_id = workspace_id
+                .clone()
+                .or_else(|| clean_value(existing.workspace_id.clone()));
+            let updated = Account {
+                id: existing.id.clone(),
+                label: if existing.label.trim().is_empty() {
+                    label
+                } else {
+                    existing.label.clone()
+                },
+                issuer: if existing.issuer.trim().is_empty() {
+                    issuer
+                } else {
+                    existing.issuer.clone()
+                },
+                chatgpt_account_id: merged_chatgpt_account_id,
+                workspace_id: merged_workspace_id,
+                group_name: existing
+                    .group_name
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+                    .or(group_name)
+                    .or_else(|| Some("IMPORT".to_string())),
+                sort: existing.sort,
+                status: "active".to_string(),
+                created_at: existing.created_at,
+                updated_at: now,
+            };
+            (existing.id.clone(), updated, false)
+        } else {
+            let next_sort = index.next_sort;
+            index.next_sort = index.next_sort.saturating_add(ACCOUNT_SORT_STEP);
+            let created = Account {
+                id: account_id.clone(),
+                label,
+                issuer,
+                chatgpt_account_id: chatgpt_account_id.clone(),
+                workspace_id,
+                group_name: group_name.or_else(|| Some("IMPORT".to_string())),
+                sort: next_sort,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            };
+            (account_id.clone(), created, true)
         };
-        (existing_id, updated, false)
-    } else {
-        let next_sort = index.next_sort;
-        index.next_sort = index.next_sort.saturating_add(ACCOUNT_SORT_STEP);
-        let created = Account {
-            id: logical_account_id.clone(),
-            label,
-            issuer: DEFAULT_ISSUER.to_string(),
-            chatgpt_account_id: chatgpt_account_id.clone(),
-            workspace_id,
-            group_name: Some("IMPORT".to_string()),
-            sort: next_sort,
-            status: "active".to_string(),
-            created_at: now,
-            updated_at: now,
-        };
-        (logical_account_id.clone(), created, true)
-    };
 
     storage
         .insert_account(&account)
@@ -497,10 +528,12 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
     let account_id_hint = optional_string_any(&[
         (tokens, "account_id"),
         (tokens, "accountId"),
-        (tokens, "chatgpt_account_id"),
-        (tokens, "chatgptAccountId"),
         (item, "account_id"),
         (item, "accountId"),
+    ]);
+    let chatgpt_account_id_hint = optional_string_any(&[
+        (tokens, "chatgpt_account_id"),
+        (tokens, "chatgptAccountId"),
         (item, "chatgpt_account_id"),
         (item, "chatgptAccountId"),
     ]);
@@ -509,6 +542,7 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
         id_token,
         refresh_token,
         account_id_hint,
+        chatgpt_account_id_hint,
     })
 }
 
@@ -519,13 +553,6 @@ fn resolve_logical_account_id(
     workspace_id: Option<&str>,
     token_fingerprint: Option<&str>,
 ) -> Result<String, String> {
-    fn normalized(value: Option<&str>) -> Option<String> {
-        value
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(str::to_string)
-    }
-
     let account_id_hint = payload
         .account_id_hint
         .as_deref()
@@ -539,39 +566,29 @@ fn resolve_logical_account_id(
     });
 
     if let Some(sub) = subject_account_id.map(str::trim).filter(|v| !v.is_empty()) {
-        let mut identity_parts: Vec<String> = Vec::new();
-        let chatgpt = normalized(chatgpt_account_id);
-        let workspace = normalized(workspace_id);
-        if let Some(v) = chatgpt.as_ref() {
-            identity_parts.push(format!("cgpt={v}"));
+        let scoped_id = build_account_storage_id(sub, chatgpt_account_id, workspace_id, None);
+        if scoped_id != sub {
+            return Ok(scoped_id);
         }
-        if let Some(v) = workspace.as_ref() {
-            if chatgpt.as_deref() != Some(v.as_str()) {
-                identity_parts.push(format!("ws={v}"));
-            }
+        if let Some(v) = hint_suffix {
+            return Ok(account_key(sub, Some(&format!("hint={v}"))));
         }
-        if identity_parts.is_empty() {
-            if let Some(v) = hint_suffix {
-                identity_parts.push(format!("hint={v}"));
-            }
+        if let Some(fp) = token_fingerprint.map(str::trim).filter(|v| !v.is_empty()) {
+            return Ok(account_key(sub, Some(&format!("fp_{fp}"))));
         }
-        if identity_parts.is_empty() {
-            if let Some(fp) = token_fingerprint.map(str::trim).filter(|v| !v.is_empty()) {
-                identity_parts.push(format!("fp_{fp}"));
-            }
-        }
-        let identity_hint = if identity_parts.is_empty() {
-            None
-        } else {
-            Some(identity_parts.join("|"))
-        };
-        return Ok(account_key(sub, identity_hint.as_deref()));
+        return Ok(sub.to_string());
     }
 
-    let chatgpt = normalized(chatgpt_account_id)
+    let chatgpt = chatgpt_account_id
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
         .or_else(|| extract_chatgpt_account_id(&payload.id_token))
         .or_else(|| extract_chatgpt_account_id(&payload.access_token));
-    let workspace = normalized(workspace_id);
+    let workspace = workspace_id
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
     if let Some(chatgpt) = chatgpt.as_ref() {
         if let Some(workspace) = workspace.as_ref() {
             if chatgpt != workspace {
@@ -603,10 +620,30 @@ fn token_fingerprint(refresh_token: &str) -> String {
     out
 }
 
-fn clean_value(value: Option<String>) -> Option<String> {
-    value
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
+fn extract_account_meta(item: &Value) -> ImportAccountMeta {
+    let meta = item.get("meta").unwrap_or(item);
+    ImportAccountMeta {
+        label: optional_string_any(&[(meta, "label"), (item, "label")]),
+        issuer: optional_string_any(&[(meta, "issuer"), (item, "issuer")]),
+        group_name: optional_string_any(&[
+            (meta, "group_name"),
+            (meta, "groupName"),
+            (item, "group_name"),
+            (item, "groupName"),
+        ]),
+        workspace_id: optional_string_any(&[
+            (meta, "workspace_id"),
+            (meta, "workspaceId"),
+            (item, "workspace_id"),
+            (item, "workspaceId"),
+        ]),
+        chatgpt_account_id: optional_string_any(&[
+            (meta, "chatgpt_account_id"),
+            (meta, "chatgptAccountId"),
+            (item, "chatgpt_account_id"),
+            (item, "chatgptAccountId"),
+        ]),
+    }
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, String> {

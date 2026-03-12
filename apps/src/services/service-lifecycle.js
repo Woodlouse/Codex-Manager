@@ -7,6 +7,7 @@ export function createServiceLifecycle({
   stopService,
   waitForConnection,
   refreshAll,
+  hydrateStartupData,
   maybeRefreshApiModelsCache,
   ensureAutoRefreshTimer,
   stopAutoRefreshTimer,
@@ -68,6 +69,22 @@ export function createServiceLifecycle({
     syncServiceAddrFromInput();
   }
 
+  async function runStartupDataHydration() {
+    if (typeof hydrateStartupData !== "function") {
+      return;
+    }
+    try {
+      await hydrateStartupData();
+    } catch (err) {
+      logStartupHydrationError(err);
+    }
+  }
+
+  function logStartupHydrationError(err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("[service-lifecycle] startup data hydration failed", message);
+  }
+
   async function handleStartService(options = {}) {
     const { fromBootstrap = false } = options;
     if (fromBootstrap) {
@@ -105,7 +122,7 @@ export function createServiceLifecycle({
     if (fromBootstrap) {
       notifyStartupState(true, "正在加载账号与用量数据...");
     }
-    await refreshAll({ refreshRemoteUsage: false, refreshRemoteModels: false });
+    await runStartupDataHydration();
     void maybeRefreshApiModelsCache?.();
     ensureAutoRefreshTimer(state, async () => {
       await refreshAll({ refreshRemoteUsage: true, refreshRemoteModels: false });
@@ -156,7 +173,7 @@ export function createServiceLifecycle({
     if (ok) {
       updateServiceToggle();
       notifyStartupState(true, "正在加载账号与用量数据...");
-      await refreshAll({ refreshRemoteUsage: false, refreshRemoteModels: false });
+      await runStartupDataHydration();
       void maybeRefreshApiModelsCache?.();
       // 中文注释：探活成功后立即复用统一定时器入口，避免“已连通但未启动自动刷新”的状态分叉。
       ensureAutoRefreshTimer(state, async () => {

@@ -96,3 +96,61 @@ test("handleCancelLogin aborts login polling and clears busy state", async () =>
   assert.equal(dom.submitLogin.disabled, false);
   assert.equal(dom.submitLogin.classList.contains("is-loading"), false);
 });
+
+test("handleLogin refreshes account table after login success", async () => {
+  const dom = {
+    submitLogin: createFakeButton(),
+    loginUrl: createFakeInput(""),
+    loginHint: createFakeInput(""),
+    inputNote: createFakeInput(""),
+    inputTags: createFakeInput(""),
+    inputGroup: createFakeInput("TEAM"),
+    manualCallbackUrl: createFakeInput(""),
+  };
+  const state = { activeLoginId: null };
+  const calls = [];
+
+  const flow = createLoginFlow({
+    dom,
+    state,
+    withButtonBusy,
+    ensureConnected: async () => true,
+    refreshAll: async () => {
+      calls.push("refreshAll");
+    },
+    refreshAccountsPage: async (options) => {
+      calls.push(["refreshAccountsPage", options]);
+      return true;
+    },
+    closeAccountModal: () => {
+      calls.push("closeAccountModal");
+    },
+    api: {
+      serviceLoginStart: async () => ({
+        authUrl: "https://example.com/auth",
+        loginId: "login-1",
+      }),
+      openInBrowser: async () => {
+        calls.push("openInBrowser");
+      },
+      serviceLoginStatus: async () => ({ status: "success" }),
+      serviceLoginComplete: async () => ({ ok: true }),
+    },
+  });
+
+  await flow.handleLogin();
+
+  assert.deepEqual(calls, [
+    "openInBrowser",
+    "refreshAll",
+    [
+      "refreshAccountsPage",
+      {
+        latestOnly: true,
+        silent: true,
+        ensureConnection: false,
+      },
+    ],
+    "closeAccountModal",
+  ]);
+});

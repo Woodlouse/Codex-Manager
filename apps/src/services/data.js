@@ -88,6 +88,86 @@ function buildRequestLogIdentity(item, index) {
   ].join("|");
 }
 
+function applyRequestLogItems(res) {
+  const items = Array.isArray(res) ? res : [];
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (item && typeof item === "object" && !item.__identity) {
+      item.__identity = buildRequestLogIdentity(item, i);
+    }
+  }
+  state.requestLogList = items;
+}
+
+function normalizeRequestLogTodaySummary(res) {
+  const inputTokens = pickNumber(res, [
+    "inputTokens",
+    "promptTokens",
+    "tokens.input",
+    "result.inputTokens",
+    "result.promptTokens",
+    "result.tokens.input",
+  ], 0);
+  const outputTokens = pickNumber(res, [
+    "outputTokens",
+    "completionTokens",
+    "tokens.output",
+    "result.outputTokens",
+    "result.completionTokens",
+    "result.tokens.output",
+  ], 0);
+  const cachedInputTokens = pickNumber(res, [
+    "cachedInputTokens",
+    "cachedTokens",
+    "tokens.cachedInput",
+    "usage.cachedInputTokens",
+    "usage.cachedTokens",
+    "result.cachedInputTokens",
+    "result.cachedTokens",
+    "result.tokens.cachedInput",
+    "result.usage.cachedInputTokens",
+    "result.usage.cachedTokens",
+  ], 0);
+  const reasoningOutputTokens = pickNumber(res, [
+    "reasoningOutputTokens",
+    "reasoningTokens",
+    "tokens.reasoningOutput",
+    "usage.reasoningOutputTokens",
+    "usage.reasoningTokens",
+    "result.reasoningOutputTokens",
+    "result.reasoningTokens",
+    "result.tokens.reasoningOutput",
+    "result.usage.reasoningOutputTokens",
+    "result.usage.reasoningTokens",
+  ], 0);
+  const todayTokens = pickNumber(res, [
+    "todayTokens",
+    "totalTokens",
+    "tokenTotal",
+    "tokens.total",
+    "result.todayTokens",
+    "result.totalTokens",
+    "result.tokenTotal",
+    "result.tokens.total",
+  ], Math.max(0, inputTokens - cachedInputTokens) + outputTokens);
+  const estimatedCost = pickNumber(res, [
+    "estimatedCost",
+    "cost",
+    "costEstimate",
+    "todayCost",
+    "result.estimatedCost",
+    "result.cost",
+    "result.costEstimate",
+    "result.todayCost",
+  ], 0);
+  return {
+    todayTokens: Math.max(0, todayTokens),
+    cachedInputTokens: Math.max(0, cachedInputTokens),
+    reasoningOutputTokens: Math.max(0, reasoningOutputTokens),
+    estimatedCost: Math.max(0, estimatedCost),
+  };
+}
+
 // 刷新账号列表
 export async function refreshAccounts() {
   const res = ensureRpcSuccess(await api.serviceAccountList(), "读取账号列表失败");
@@ -215,15 +295,7 @@ export async function refreshRequestLogs(query, options = {}) {
   if (latestOnly && seq !== requestLogRefreshSeq) {
     return false;
   }
-  const items = Array.isArray(res.items) ? res.items : [];
-  // 中文注释：预计算 identity，避免 render 阶段频繁 join 字符串造成 GC 抖动。
-  for (let i = 0; i < items.length; i += 1) {
-    const item = items[i];
-    if (item && typeof item === "object" && !item.__identity) {
-      item.__identity = buildRequestLogIdentity(item, i);
-    }
-  }
-  state.requestLogList = items;
+  applyRequestLogItems(Array.isArray(res.items) ? res.items : []);
   return true;
 }
 
@@ -237,76 +309,37 @@ export async function refreshRequestLogTodaySummary() {
       await api.serviceRequestLogTodaySummary(),
       "读取今日请求汇总失败",
     );
-    const inputTokens = pickNumber(res, [
-      "inputTokens",
-      "promptTokens",
-      "tokens.input",
-      "result.inputTokens",
-      "result.promptTokens",
-      "result.tokens.input",
-    ], 0);
-    const outputTokens = pickNumber(res, [
-      "outputTokens",
-      "completionTokens",
-      "tokens.output",
-      "result.outputTokens",
-      "result.completionTokens",
-      "result.tokens.output",
-    ], 0);
-    const cachedInputTokens = pickNumber(res, [
-      "cachedInputTokens",
-      "cachedTokens",
-      "tokens.cachedInput",
-      "usage.cachedInputTokens",
-      "usage.cachedTokens",
-      "result.cachedInputTokens",
-      "result.cachedTokens",
-      "result.tokens.cachedInput",
-      "result.usage.cachedInputTokens",
-      "result.usage.cachedTokens",
-    ], 0);
-    const reasoningOutputTokens = pickNumber(res, [
-      "reasoningOutputTokens",
-      "reasoningTokens",
-      "tokens.reasoningOutput",
-      "usage.reasoningOutputTokens",
-      "usage.reasoningTokens",
-      "result.reasoningOutputTokens",
-      "result.reasoningTokens",
-      "result.tokens.reasoningOutput",
-      "result.usage.reasoningOutputTokens",
-      "result.usage.reasoningTokens",
-    ], 0);
-    const todayTokens = pickNumber(res, [
-      "todayTokens",
-      "totalTokens",
-      "tokenTotal",
-      "tokens.total",
-      "result.todayTokens",
-      "result.totalTokens",
-      "result.tokenTotal",
-      "result.tokens.total",
-    ], Math.max(0, inputTokens - cachedInputTokens) + outputTokens);
-    const estimatedCost = pickNumber(res, [
-      "estimatedCost",
-      "cost",
-      "costEstimate",
-      "todayCost",
-      "result.estimatedCost",
-      "result.cost",
-      "result.costEstimate",
-      "result.todayCost",
-    ], 0);
-    state.requestLogTodaySummary = {
-      todayTokens: Math.max(0, todayTokens),
-      cachedInputTokens: Math.max(0, cachedInputTokens),
-      reasoningOutputTokens: Math.max(0, reasoningOutputTokens),
-      estimatedCost: Math.max(0, estimatedCost),
-    };
+    state.requestLogTodaySummary = normalizeRequestLogTodaySummary(res);
   } catch (err) {
     if (!isCommandMissingError(err)) {
       throw err;
     }
     state.requestLogTodaySummary = { ...DEFAULT_REQUEST_LOG_TODAY_SUMMARY };
   }
+}
+
+export async function hydrateFromStartupSnapshot(options = {}) {
+  const res = ensureRpcSuccess(
+    await api.serviceStartupSnapshot({
+      requestLogLimit: options.requestLogLimit,
+    }),
+    "读取启动快照失败",
+  );
+
+  state.accountList = Array.isArray(res.accounts) ? res.accounts : [];
+  state.usageList = Array.isArray(res.usageSnapshots) ? res.usageSnapshots : [];
+  state.apiKeyList = Array.isArray(res.apiKeys) ? res.apiKeys : [];
+  state.apiModelOptions = Array.isArray(res.apiModelOptions) ? res.apiModelOptions : [];
+  state.manualPreferredAccountId = String(res.manualPreferredAccountId || "").trim();
+  state.requestLogTodaySummary = normalizeRequestLogTodaySummary(res.requestLogTodaySummary || {});
+  applyRequestLogItems(Array.isArray(res.requestLogs) ? res.requestLogs : []);
+
+  const pageSize = Number.isFinite(Number(state.accountPageSize)) && Number(state.accountPageSize) > 0
+    ? Math.trunc(Number(state.accountPageSize))
+    : 5;
+  state.accountPage = 1;
+  state.accountPageSize = pageSize;
+  state.accountPageTotal = state.accountList.length;
+  state.accountPageItems = state.accountList.slice(0, pageSize);
+  state.accountPageLoaded = true;
 }

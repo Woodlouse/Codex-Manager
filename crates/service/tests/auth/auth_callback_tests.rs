@@ -1,4 +1,7 @@
-use super::{ensure_login_server_with_addr, resolve_redirect_uri, LOGIN_SERVER_STATE};
+use super::{
+    build_callback_error_page, build_callback_success_page, ensure_login_server_with_addr,
+    resolve_redirect_uri, LOGIN_SERVER_STATE,
+};
 use std::net::TcpListener;
 use std::sync::Mutex;
 use url::Url;
@@ -86,4 +89,19 @@ fn login_server_rejects_non_loopback_by_default() {
         None => std::env::remove_var("CODEXMANAGER_ALLOW_NON_LOOPBACK_LOGIN_ADDR"),
     }
     reset_login_server_state();
+}
+
+#[test]
+fn callback_success_page_contains_auto_close_script() {
+    let html = build_callback_success_page();
+    assert!(html.contains("window.close()"));
+    assert!(html.contains("Login Success"));
+    assert!(html.contains("Close Window"));
+}
+
+#[test]
+fn callback_error_page_escapes_message() {
+    let html = build_callback_error_page("bad <script>alert(1)</script>");
+    assert!(html.contains("Login Failed"));
+    assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
 }

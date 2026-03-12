@@ -1,14 +1,16 @@
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
+use super::json_conversion::{
+    extract_function_call_arguments_raw, summarize_special_response_item_text,
+};
 use super::tool_mapping::{
     build_openai_chat_tool_calls, collect_chat_tool_calls_from_delta,
-    collect_chat_tool_calls_from_message, map_response_event_to_openai_chat_tool_chunk,
-    restore_openai_tool_name, restore_openai_tool_name_in_chat_choice, AggregatedChatToolCall,
+    collect_chat_tool_calls_from_message, is_openai_chat_tool_item_type,
+    map_response_event_to_openai_chat_tool_chunk, restore_openai_tool_name,
+    restore_openai_tool_name_in_chat_choice, AggregatedChatToolCall,
 };
-use super::{is_response_completed_event_type, parse_openai_sse_event_value};
-
-type ToolNameRestoreMap = super::super::ToolNameRestoreMap;
+use super::{is_response_completed_event_type, parse_openai_sse_event_value, ToolNameRestoreMap};
 
 pub(super) fn extract_chat_content_text(content: Option<&Value>) -> String {
     let Some(content) = content else {
@@ -184,6 +186,14 @@ fn append_text_from_response_output_item(item_obj: &Map<String, Value>, out: &mu
     }
 }
 
+fn extract_text_from_response_output_payload(item_obj: &Map<String, Value>) -> String {
+    let mut out = String::new();
+    if let Some(output) = item_obj.get("output") {
+        collect_text_from_response_content(output, &mut out);
+    }
+    out
+}
+
 pub(super) fn map_openai_response_to_chat_completion(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -239,7 +249,7 @@ pub(super) fn map_openai_response_to_chat_completion(
                 append_text_from_response_output_item(item_obj, &mut assistant_text);
                 continue;
             }
-            if item_type == "function_call" {
+            if is_openai_chat_tool_item_type(item_type) {
                 let call_id = item_obj
                     .get("call_id")
                     .or_else(|| item_obj.get("id"))
@@ -251,15 +261,7 @@ pub(super) fn map_openai_response_to_chat_completion(
                     .and_then(Value::as_str)
                     .map(|raw| restore_openai_tool_name(raw, tool_name_restore_map))
                     .unwrap_or_else(|| "tool".to_string());
-                let arguments = item_obj
-                    .get("arguments")
-                    .map(|arguments| {
-                        if let Some(text) = arguments.as_str() {
-                            text.to_string()
-                        } else {
-                            serde_json::to_string(arguments).unwrap_or_else(|_| "{}".to_string())
-                        }
-                    })
+                let arguments = extract_function_call_arguments_raw(item_obj)
                     .unwrap_or_else(|| "{}".to_string());
                 tool_calls.push(json!({
                     "id": call_id,
@@ -269,6 +271,20 @@ pub(super) fn map_openai_response_to_chat_completion(
                         "arguments": arguments
                     }
                 }));
+                continue;
+            }
+            if matches!(
+                item_type,
+                "function_call_output" | "custom_tool_call_output"
+            ) {
+                let output_text = extract_text_from_response_output_payload(item_obj);
+                if !output_text.is_empty() {
+                    assistant_text.push_str(output_text.as_str());
+                }
+                continue;
+            }
+            if let Some(summary) = summarize_special_response_item_text(item_obj) {
+                assistant_text.push_str(summary.as_str());
                 continue;
             }
             append_text_from_response_output_item(item_obj, &mut assistant_text);
@@ -360,6 +376,38 @@ pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
                 {
                     return Some(tool_chunk);
                 }
+                if let Some(text) = value
+                    .get("item")
+                    .or_else(|| value.get("output_item"))
+                    .and_then(Value::as_object)
+                    .and_then(|item| {
+                        let item_type =
+                            item.get("type").and_then(Value::as_str).unwrap_or_default();
+                        if matches!(
+                            item_type,
+                            "function_call_output" | "custom_tool_call_output"
+                        ) {
+                            let text = extract_text_from_response_output_payload(item);
+                            if text.is_empty() {
+                                None
+                            } else {
+                                Some(text)
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    return Some(build_openai_chat_text_chunk(value, text.as_str()));
+                }
+                if let Some(summary) = value
+                    .get("item")
+                    .or_else(|| value.get("output_item"))
+                    .and_then(Value::as_object)
+                    .and_then(summarize_special_response_item_text)
+                {
+                    return Some(build_openai_chat_text_chunk(value, summary.as_str()));
+                }
                 let text = extract_stream_event_text(value);
                 if text.is_empty() {
                     return None;
@@ -400,7 +448,7 @@ pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
                         items.iter().any(|item| {
                             item.get("type")
                                 .and_then(Value::as_str)
-                                .is_some_and(|item_type| item_type == "function_call")
+                                .is_some_and(is_openai_chat_tool_item_type)
                         })
                     }) {
                     "tool_calls"
@@ -524,7 +572,7 @@ pub(super) fn convert_openai_sse_to_chat_completions_json(
                 .or_else(|| value.get("output_item"))
                 .and_then(|item| item.get("type"))
                 .and_then(Value::as_str)
-                .is_some_and(|item_type| item_type == "function_call");
+                .is_some_and(is_openai_chat_tool_item_type);
             if !is_function_call_item && *saw_text_delta {
                 return;
             }

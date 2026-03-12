@@ -22,9 +22,6 @@
 /apps/dist/
 /apps/.vite/
 /apps/.turbo/
-#docs
-spec/*
-docs/*
 # Build outputs
 /portable/
 
@@ -32,8 +29,9 @@ docs/*
 /.worktrees/
 /.tmp-antigravity-manager*/
 
-# Docs/specs (keep repo clean)
-/docs/
+# Docs/specs
+/docs/**/*.tmp.md
+/docs/**/*.local.md
 /specs/
 
 # Logs & local data

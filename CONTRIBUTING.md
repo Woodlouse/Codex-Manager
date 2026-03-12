@@ -17,6 +17,14 @@ CodexManager 不是单一前端项目，也不是单一 Rust 服务项目。
 
 因此提交前必须先判断你改动属于哪个边界，避免把多个职责直接堆进同一个文件。
 
+治理文档入口：
+
+- `README.md`：项目介绍与快速开始
+- `ARCHITECTURE.md`：结构边界与运行关系
+- `TESTING.md`：仓库级验证基线
+- `SECURITY.md`：安全问题与敏感信息处理规则
+- `docs/README.md`：治理文档目录与提交规则
+
 ## 2. 开发环境
 
 ### 2.1 必备工具
@@ -61,13 +69,6 @@ cargo build -p codexmanager-start --release
 pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist -Portable
 ```
 
-发布辅助脚本：
-
-```powershell
-pwsh -File scripts/release/assert-release-version.ps1 -Tag v0.1.6
-pwsh -File scripts/release/disable-tauri-before-build.ps1 -ConfigPath <临时 tauri.conf.json 路径>
-```
-
 ## 3. 提交边界
 
 ### 3.1 按职责改文件
@@ -90,13 +91,22 @@ pwsh -File scripts/release/disable-tauri-before-build.ps1 -ConfigPath <临时 ta
 - `crates/service/src/gateway/protocol_adapter/response_conversion.rs`
 - `.github/workflows/release-all.yml`
 
-约定：
+### 3.3 大文件预警阈值
 
-- JS 单文件超过 1500 行，优先考虑拆分。
-- Rust 单文件超过 1000 行，优先考虑拆分。
-- Workflow 单文件超过 400 行，优先考虑抽复用逻辑。
+达到以下阈值时，不应默认继续往里堆逻辑，而应优先评估拆分：
 
-### 3.3 禁止项
+- JavaScript / TypeScript：超过 `500` 行开始预警，超过 `800` 行必须说明为什么不拆
+- Rust：超过 `400` 行开始预警，超过 `700` 行必须说明为什么不拆
+- Workflow / YAML：超过 `250` 行开始预警，超过 `400` 行必须说明为什么不拆
+- Markdown 说明文档：超过 `300` 行开始预警，优先下沉到 `docs/` 子文档
+
+说明：
+
+- “开始预警”表示提交前应主动判断是否继续拆职责
+- “必须说明为什么不拆”表示提交说明或 PR 描述中要明确给出理由
+- 这些阈值是长期维护约束，不是一次性清理指标
+
+### 3.4 禁止项
 
 - 不要顺手在总入口继续堆设置项、事件绑定或协议分支。
 - 不要把 README 当 changelog 长期维护。
@@ -164,12 +174,6 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -DryRun
 - 一次提交只解决一类问题
 - 标题直接描述结果，不写空话
 - 不要把多个不相关改动塞进同一提交
-
-示例：
-
-- `完善发布脚本并补齐 prerelease 参数`
-- `拆分设置页事件绑定并补充回归测试`
-- `修复 responses 聚合路径中的 tool_calls 丢失`
 
 ### 5.2 PR 描述最低要求
 

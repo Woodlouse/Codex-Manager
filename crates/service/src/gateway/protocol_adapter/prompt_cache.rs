@@ -54,6 +54,12 @@ fn get_or_create_prompt_cache_id(key: &str) -> String {
     guard.get_or_create(key, now)
 }
 
+fn with_prompt_cache_mut<R>(f: impl FnOnce(&mut PromptCache) -> R) -> Option<R> {
+    let cache = PROMPT_CACHE.get()?;
+    let mut guard = crate::lock_utils::lock_recover(cache, "prompt_cache");
+    Some(f(&mut guard))
+}
+
 #[derive(Clone, Copy)]
 struct PromptCacheConfig {
     ttl: Duration,
@@ -191,21 +197,24 @@ impl PromptCache {
 }
 
 pub(super) fn clear_runtime_state() {
-    if let Some(cache) = PROMPT_CACHE.get() {
-        let mut guard = crate::lock_utils::lock_recover(cache, "prompt_cache");
+    let _ = with_prompt_cache_mut(|cache| {
         let now = Instant::now();
-        let config = guard.config;
-        *guard = PromptCache::new(now);
-        guard.config = config;
-    }
+        let config = cache.config;
+        *cache = PromptCache::new(now);
+        cache.config = config;
+    });
 }
 
 pub(super) fn reload_from_env() {
-    if let Some(cache) = PROMPT_CACHE.get() {
-        let mut guard = crate::lock_utils::lock_recover(cache, "prompt_cache");
-        guard.config = PromptCacheConfig::load_from_env();
-        guard.cleanup(Instant::now());
-    }
+    let _ = with_prompt_cache_mut(|cache| {
+        cache.config = PromptCacheConfig::load_from_env();
+        cache.cleanup(Instant::now());
+    });
+}
+
+pub(crate) fn reload_runtime_state() {
+    clear_runtime_state();
+    reload_from_env();
 }
 
 fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {

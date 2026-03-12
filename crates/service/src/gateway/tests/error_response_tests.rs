@@ -4,6 +4,11 @@ use tiny_http::Response;
 #[test]
 fn terminal_text_response_sets_error_code_header() {
     let response = terminal_text_response(503, "no available account", Some("trc_test_1"));
+    let content_type = response
+        .headers()
+        .iter()
+        .find(|item| item.field.as_str().as_str().eq_ignore_ascii_case("Content-Type"))
+        .map(|item| item.value.as_str().to_string());
     let header = response
         .headers()
         .iter()
@@ -15,6 +20,7 @@ fn terminal_text_response_sets_error_code_header() {
         })
         .map(|item| item.value.as_str().to_string());
 
+    assert_eq!(content_type.as_deref(), Some("application/json; charset=utf-8"));
     assert_eq!(header.as_deref(), Some("no_available_account"));
     let trace_header = response
         .headers()

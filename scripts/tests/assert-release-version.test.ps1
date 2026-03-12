@@ -5,7 +5,7 @@ if (-not (Test-Path $scriptPath -PathType Leaf)) {
   throw "missing assert-release-version.ps1 at $scriptPath"
 }
 
-& $scriptPath -Tag "v0.1.6" | Out-Null
+& $scriptPath -Tag "v0.1.8" | Out-Null
 if (-not $?) {
   throw "assert-release-version.ps1 should pass on current workspace"
 }

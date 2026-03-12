@@ -74,6 +74,23 @@ function createContext(overrides = {}) {
     normalizeUpstreamProxyUrl: (value) => String(value || ""),
     applyUpstreamProxyToService: async () => true,
     upstreamProxyHintText: "",
+    readGatewayTransportSetting: () => ({
+      sseKeepaliveIntervalMs: 15000,
+      upstreamStreamTimeoutMs: 1800000,
+    }),
+    readGatewayTransportForm: () => ({
+      ok: true,
+      settings: {
+        sseKeepaliveIntervalMs: 16000,
+        upstreamStreamTimeoutMs: 0,
+      },
+    }),
+    saveGatewayTransportSetting: () => {},
+    setGatewayTransportForm: () => {},
+    normalizeGatewayTransportSettings: (value) => value || {},
+    setGatewayTransportHint: () => {},
+    applyGatewayTransportToService: async () => true,
+    gatewayTransportHintText: "",
     readBackgroundTasksSetting: () => ({}),
     readBackgroundTasksForm: () => ({ ok: true, settings: {} }),
     saveBackgroundTasksSetting: () => {},
@@ -157,4 +174,47 @@ test("bindSettingsEvents lets env override input submit on Enter", () => {
 
   assert.equal(prevented, true);
   assert.equal(envOverridesSave.clickCount, 1);
+});
+
+test("bindSettingsEvents saves gateway transport settings through app settings API", async () => {
+  const gatewayTransportSave = new FakeElement();
+  const gatewayTransportSseKeepaliveIntervalMs = new FakeElement();
+  const gatewayTransportUpstreamStreamTimeoutMs = new FakeElement();
+  gatewayTransportSseKeepaliveIntervalMs.value = "16000";
+  gatewayTransportUpstreamStreamTimeoutMs.value = "0";
+  const calls = [];
+
+  bindSettingsEvents(createContext({
+    dom: {
+      gatewayTransportSave,
+      gatewayTransportSseKeepaliveIntervalMs,
+      gatewayTransportUpstreamStreamTimeoutMs,
+    },
+    saveGatewayTransportSetting: (value) => {
+      calls.push(["save", value]);
+    },
+    setGatewayTransportForm: (value) => {
+      calls.push(["form", value]);
+    },
+    setGatewayTransportHint: (value) => {
+      calls.push(["hint", value]);
+    },
+    saveAppSettingsPatch: async (patch) => {
+      calls.push(["patch", patch]);
+      return patch;
+    },
+  }));
+
+  gatewayTransportSave.dispatch("click");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(calls, [
+    ["save", { sseKeepaliveIntervalMs: 16000, upstreamStreamTimeoutMs: 0 }],
+    ["form", { sseKeepaliveIntervalMs: 16000, upstreamStreamTimeoutMs: 0 }],
+    ["patch", { sseKeepaliveIntervalMs: 16000, upstreamStreamTimeoutMs: 0 }],
+    ["save", { sseKeepaliveIntervalMs: 16000, upstreamStreamTimeoutMs: 0 }],
+    ["form", { sseKeepaliveIntervalMs: 16000, upstreamStreamTimeoutMs: 0 }],
+    ["hint", ""],
+  ]);
 });
