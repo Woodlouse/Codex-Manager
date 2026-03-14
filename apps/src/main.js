@@ -572,6 +572,7 @@ const {
   refreshRequestLogs,
   renderRequestLogs,
   refreshAccountsAndUsage,
+  refreshAll,
   renderAccountsView,
   renderCurrentPageView,
   openUsageModal,
@@ -728,7 +729,6 @@ window.addEventListener("DOMContentLoaded", () => {
     await bootstrap();
   })();
 });
-
 
 
 

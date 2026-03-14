@@ -77,6 +77,12 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/importFromRegisterDb" => {
             super::value_or_error(account_import::import_account_auth_register_db())
         }
+        "account/loginRefreshFromRegisterDb" => {
+            let account_id = super::str_param(req, "accountId").unwrap_or("");
+            super::value_or_error(account_import::import_account_auth_register_db_for_account(
+                account_id,
+            ))
+        }
         "account/clearRegisterDb" => {
             super::value_or_error(account_import::clear_account_auth_register_db())
         }

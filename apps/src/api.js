@@ -37,6 +37,7 @@ export {
   serviceAccountDeleteUnavailableFree,
   serviceAccountExportByAccountFiles,
   serviceAccountImport,
+  serviceAccountLoginRefreshFromRegisterDb,
   serviceAccountImportByDirectory,
   serviceAccountList,
   serviceAccountUpdate,

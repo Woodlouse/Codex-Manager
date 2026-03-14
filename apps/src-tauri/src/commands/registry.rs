@@ -14,6 +14,7 @@ macro_rules! invoke_handler {
             crate::commands::account::remote::service_account_delete_many,
             crate::commands::account::remote::service_account_delete_unavailable_free,
             crate::commands::account::remote::service_account_update,
+            crate::commands::account::remote::service_account_login_refresh_from_register_db,
             crate::commands::account::transfer::service_account_import,
             crate::commands::account::transfer::service_account_import_by_directory,
             crate::commands::account::transfer::service_account_export_by_account_files,

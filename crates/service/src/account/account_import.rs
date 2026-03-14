@@ -128,6 +128,46 @@ pub(crate) fn import_account_auth_register_db() -> Result<AccountImportResult, S
     import_account_auth_values_with_storage(&storage, items)
 }
 
+pub(crate) fn import_account_auth_register_db_for_account(
+    account_id: &str,
+) -> Result<AccountImportResult, String> {
+    let account_id = account_id.trim();
+    if account_id.is_empty() {
+        return Err("accountId 不能为空".to_string());
+    }
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let account = storage
+        .find_account_by_id(account_id)
+        .map_err(|err| err.to_string())?;
+    let Some(account) = account else {
+        return Err("账号不存在".to_string());
+    };
+    let label = account.label.trim();
+    if label.is_empty() {
+        return Err("账号标签为空，无法匹配注册库".to_string());
+    }
+    let email_key = label.to_ascii_lowercase();
+    let dsn = resolve_register_db_url()
+        .ok_or_else(|| "CODEXMANAGER_REGISTER_DB_URL/DATABASE_URL not set".to_string())?;
+    let mut client =
+        Client::connect(&dsn, NoTls).map_err(|err| format!("connect register db failed: {err}"))?;
+    let rows = client
+        .query(
+            "SELECT result FROM registration_results WHERE email_key = $1 LIMIT 1",
+            &[&email_key],
+        )
+        .map_err(|err| format!("query register db failed: {err}"))?;
+    if rows.is_empty() {
+        return Err(format!("注册库未找到账号：{}", label));
+    }
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let value: Value = row.get(0);
+        items.push(value);
+    }
+    import_account_auth_values_with_storage(&storage, items)
+}
+
 pub(crate) fn clear_account_auth_register_db() -> Result<RegisterDbClearResult, String> {
     let dsn = resolve_register_db_url()
         .ok_or_else(|| "CODEXMANAGER_REGISTER_DB_URL/DATABASE_URL not set".to_string())?;

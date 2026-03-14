@@ -28,6 +28,7 @@ export function createAppRuntime(deps) {
   let refreshAllInFlight = null;
   let refreshAllProgressClearTimer = null;
   let apiModelsRemoteRefreshInFlight = null;
+  const ACCOUNT_HUB_PORT = 48800;
 
   function normalizeErrorMessage(err) {
     const raw = String(err && err.message ? err.message : err).trim();
@@ -44,6 +45,42 @@ export function createAppRuntime(deps) {
         return;
       }
       setTimeout(resolve, 0);
+    });
+  }
+
+  function resolveAccountHubBaseUrl() {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    const hostname = window.location && window.location.hostname
+      ? window.location.hostname
+      : "";
+    if (!hostname) {
+      return "";
+    }
+    const safeHost = hostname.includes(":") ? `[${hostname}]` : hostname;
+    const protocol = window.location && window.location.protocol === "https:" ? "https" : "http";
+    return `${protocol}://${safeHost}:${ACCOUNT_HUB_PORT}`;
+  }
+
+  function triggerAccountHubRefresh(reason = "refreshAll") {
+    if (typeof fetch !== "function") {
+      return;
+    }
+    const baseUrl = resolveAccountHubBaseUrl();
+    if (!baseUrl) {
+      return;
+    }
+    const endpoints = ["/api/accounts", "/api/auto-register/status"];
+    void Promise.allSettled(
+      endpoints.map((path) => fetch(`${baseUrl}${path}`, {
+        method: "GET",
+        mode: "no-cors",
+        credentials: "omit",
+        cache: "no-store",
+      })),
+    ).catch((err) => {
+      console.debug(`[account-hub] refresh skipped: ${reason}`, err);
     });
   }
 
@@ -195,6 +232,7 @@ export function createAppRuntime(deps) {
         }
       }
       renderCurrentPageView();
+      triggerAccountHubRefresh("refreshAll");
       return results;
     })();
     try {
@@ -273,8 +311,10 @@ export function createAppRuntime(deps) {
 
     let completed = 0;
     let failed = 0;
+    let ranRefresh = false;
     try {
       for (const account of accounts) {
+        ranRefresh = true;
         const label = String(account.label || account.id || "").trim() || "未知账号";
         try {
           await serviceUsageRefresh(account.id);
@@ -302,6 +342,9 @@ export function createAppRuntime(deps) {
       console.error("[refreshUsageOnly] failed", err);
       showToast("账号用量刷新失败，请稍后重试", "error");
     } finally {
+      if (ranRefresh) {
+        triggerAccountHubRefresh("manualRefreshAll");
+      }
       clearProgressLater();
     }
   }

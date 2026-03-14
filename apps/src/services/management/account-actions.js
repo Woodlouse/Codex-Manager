@@ -225,6 +225,7 @@ export function createAccountActions({
   state,
   ensureConnected,
   refreshAccountsAndUsage,
+  refreshAll,
   renderAccountsView,
   renderCurrentPageView,
   showToast,
@@ -256,6 +257,15 @@ export function createAccountActions({
       return await refreshSectionInFlight;
     } finally {
       refreshSectionInFlight = null;
+    }
+  };
+
+  const refreshAllAfterImport = async () => {
+    if (typeof refreshAll !== "function") return;
+    try {
+      await refreshAll({ refreshRemoteUsage: true, refreshRemoteModels: false });
+    } catch (err) {
+      console.error("[import] refreshAll failed", err);
     }
   };
 
@@ -380,6 +390,58 @@ export function createAccountActions({
       showToast(`已锁定 ${account.label || account.id}，异常前将持续优先使用`);
       renderAccountsView?.();
       renderCurrentPageView?.();
+    });
+  }
+
+  function upsertUsageSnapshot(accountId, snap) {
+    if (!accountId || !snap) return;
+    const next = Array.isArray(state.usageList) ? [...state.usageList] : [];
+    const idx = next.findIndex((item) => item && item.accountId === accountId);
+    const normalized = { ...snap, accountId };
+    if (idx >= 0) {
+      next[idx] = normalized;
+    } else {
+      next.push(normalized);
+    }
+    state.usageList = next;
+  }
+
+  async function refreshLoginFromRegisterDb(account, actionButton) {
+    if (!account || !account.id) return;
+    await enqueueAccountOp(async () => {
+      const ok = await ensureConnected();
+      if (!ok) return;
+      const label = account.label || account.id;
+      if (actionButton) {
+        actionButton.disabled = true;
+      }
+      try {
+        showToast(`正在刷新登录：${label}...`);
+        const res = await api.serviceAccountLoginRefreshFromRegisterDb(account.id);
+        if (res && res.ok === false) {
+          showToast(res.error || "登录刷新失败", "error");
+          return;
+        }
+        showToast(`登录刷新完成：${label}，正在刷新用量...`);
+        await api.serviceUsageRefresh(account.id);
+        const usageRes = await api.serviceUsageRead(account.id);
+        if (usageRes && usageRes.snapshot) {
+          upsertUsageSnapshot(account.id, usageRes.snapshot);
+        }
+        renderAccountsView?.();
+        renderCurrentPageView?.();
+        showToast(`账号已刷新：${label}`);
+      } catch (err) {
+        if (isMissingCommandError(err)) {
+          showToast("当前服务版本不支持注册库登录刷新", "error");
+          return;
+        }
+        showToast(err instanceof Error ? err.message : String(err), "error");
+      } finally {
+        if (actionButton) {
+          actionButton.disabled = false;
+        }
+      }
     });
   }
 
@@ -530,6 +592,7 @@ export function createAccountActions({
       await refreshAccountsSection();
       const sourceSuffix = sourceLabel ? `（${sourceLabel}）` : "";
       showToast(`导入完成${sourceSuffix}：共${total}，新增${created}，更新${updated}，失败${failed}`);
+      await refreshAllAfterImport();
       await nextPaintTick();
       if (failed > 0 && Array.isArray(res?.errors) && res.errors.length > 0) {
         const first = res.errors[0];
@@ -631,6 +694,7 @@ export function createAccountActions({
       const failed = Number(res?.failed || 0);
       await refreshAccountsSection();
       showToast(`导入完成（注册库）：共${total}，新增${created}，更新${updated}，失败${failed}`);
+      await refreshAllAfterImport();
       if (failed > 0 && Array.isArray(res?.errors) && res.errors.length > 0) {
         const first = res.errors[0];
         const index = Number(first?.index || 0);
@@ -648,6 +712,7 @@ export function createAccountActions({
     importAccountsFromDirectory,
     importAccountsFromRegisterDb,
     setManualPreferredAccount,
+    refreshLoginFromRegisterDb,
     deleteUnavailableFreeAccounts,
     exportAccountsByFile,
   };

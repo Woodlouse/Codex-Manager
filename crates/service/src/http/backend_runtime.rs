@@ -189,6 +189,20 @@ pub(crate) fn start_backend_server() -> io::Result<BackendServer> {
     Ok(BackendServer { addr, join })
 }
 
+pub(crate) fn start_backend_server_on(addr: &str) -> io::Result<BackendServer> {
+    let server = Server::http(addr).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let bound_addr = server
+        .server_addr()
+        .to_ip()
+        .map(|address| address.to_string())
+        .unwrap_or_else(|| addr.to_string());
+    let join = thread::spawn(move || run_backend_server(server));
+    Ok(BackendServer {
+        addr: bound_addr,
+        join,
+    })
+}
+
 pub(crate) fn wake_backend_shutdown(addr: &str) {
     let Ok(mut stream) = TcpStream::connect(addr) else {
         return;
