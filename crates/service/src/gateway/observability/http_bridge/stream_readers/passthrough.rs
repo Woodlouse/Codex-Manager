@@ -1,8 +1,10 @@
 use super::{
-    inspect_sse_frame, merge_usage, sse_keepalive_interval, Arc, Cursor, Mutex,
+    classify_upstream_stream_read_error, inspect_sse_frame, merge_usage, sse_keepalive_interval,
+    stream_incomplete_message, stream_reader_disconnected_message, Arc, Cursor, Mutex,
     PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal, UpstreamSseFramePump,
     UpstreamSseFramePumpItem,
 };
+use crate::gateway::http_bridge::extract_error_hint_from_body;
 
 pub(crate) struct PassthroughSseUsageReader {
     upstream: UpstreamSseFramePump,
@@ -29,10 +31,27 @@ impl PassthroughSseUsageReader {
 
     fn update_usage_from_frame(&self, lines: &[String]) {
         let inspection = inspect_sse_frame(lines);
-        if inspection.usage.is_none() && inspection.terminal.is_none() {
-            return;
-        }
         if let Ok(mut collector) = self.usage_collector.lock() {
+            if inspection.usage.is_none() && inspection.terminal.is_none() {
+                if collector.upstream_error_hint.is_none() {
+                    let raw_frame = lines.concat();
+                    let trimmed = raw_frame.trim();
+                    let looks_like_sse_frame = lines.iter().any(|line| {
+                        let line = line.trim_start();
+                        line.starts_with("data:")
+                            || line.starts_with("event:")
+                            || line.starts_with("id:")
+                            || line.starts_with("retry:")
+                            || line.starts_with(':')
+                    });
+                    if !looks_like_sse_frame && !trimmed.is_empty() {
+                        collector.upstream_error_hint =
+                            extract_error_hint_from_body(400, raw_frame.as_bytes())
+                                .or_else(|| Some(trimmed.to_string()));
+                    }
+                }
+                return;
+            }
             if let Some(parsed) = inspection.usage {
                 merge_usage(&mut collector.usage, parsed);
             }
@@ -54,9 +73,9 @@ impl PassthroughSseUsageReader {
             Ok(UpstreamSseFramePumpItem::Eof) => {
                 if let Ok(mut collector) = self.usage_collector.lock() {
                     if !collector.saw_terminal {
-                        collector.terminal_error.get_or_insert_with(|| {
-                            "stream disconnected before completion".to_string()
-                        });
+                        collector
+                            .terminal_error
+                            .get_or_insert_with(stream_incomplete_message);
                     }
                 }
                 self.finished = true;
@@ -66,7 +85,7 @@ impl PassthroughSseUsageReader {
                 if let Ok(mut collector) = self.usage_collector.lock() {
                     collector
                         .terminal_error
-                        .get_or_insert_with(|| format!("stream read failed: {err}"));
+                        .get_or_insert_with(|| classify_upstream_stream_read_error(&err));
                 }
                 self.finished = true;
                 Ok(Vec::new())
@@ -76,9 +95,9 @@ impl PassthroughSseUsageReader {
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 if let Ok(mut collector) = self.usage_collector.lock() {
-                    collector.terminal_error.get_or_insert_with(|| {
-                        "stream reader disconnected unexpectedly".to_string()
-                    });
+                    collector
+                        .terminal_error
+                        .get_or_insert_with(stream_reader_disconnected_message);
                 }
                 self.finished = true;
                 Ok(Vec::new())

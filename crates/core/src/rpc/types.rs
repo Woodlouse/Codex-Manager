@@ -126,6 +126,19 @@ pub struct UsageListResult {
     pub items: Vec<UsageSnapshotResult>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageAggregateSummaryResult {
+    pub primary_bucket_count: i64,
+    pub primary_known_count: i64,
+    pub primary_unknown_count: i64,
+    pub primary_remain_percent: Option<i64>,
+    pub secondary_bucket_count: i64,
+    pub secondary_known_count: i64,
+    pub secondary_unknown_count: i64,
+    pub secondary_remain_percent: Option<i64>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeySummary {
@@ -146,6 +159,18 @@ pub struct ApiKeySummary {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiKeyListResult {
     pub items: Vec<ApiKeySummary>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyUsageStatSummary {
+    pub key_id: String,
+    pub total_tokens: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiKeyUsageStatListResult {
+    pub items: Vec<ApiKeyUsageStatSummary>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -189,6 +214,7 @@ pub struct RequestLogSummary {
     pub response_adapter: Option<String>,
     pub upstream_url: Option<String>,
     pub status_code: Option<i64>,
+    pub duration_ms: Option<i64>,
     pub input_tokens: Option<i64>,
     pub cached_input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
@@ -220,6 +246,8 @@ pub struct RequestLogTodaySummaryResult {
 pub struct StartupSnapshotResult {
     pub accounts: Vec<AccountSummary>,
     pub usage_snapshots: Vec<UsageSnapshotResult>,
+    #[serde(default)]
+    pub usage_aggregate_summary: UsageAggregateSummaryResult,
     pub api_keys: Vec<ApiKeySummary>,
     pub api_model_options: Vec<ModelOption>,
     pub manual_preferred_account_id: Option<String>,

@@ -1,8 +1,8 @@
 use std::sync::atomic::Ordering;
 
 use crate::app_shell::{
-    CLOSE_TO_TRAY_ON_CLOSE, KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE,
-    LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY, TRAY_AVAILABLE,
+    CLOSE_TO_TRAY_ON_CLOSE, KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE, LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY,
+    TRAY_AVAILABLE,
 };
 
 pub fn effective_lightweight_mode_on_close_to_tray(

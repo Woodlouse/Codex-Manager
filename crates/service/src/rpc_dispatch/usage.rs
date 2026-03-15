@@ -2,7 +2,7 @@ use codexmanager_core::rpc::types::{
     JsonRpcRequest, JsonRpcResponse, UsageListResult, UsageReadResult,
 };
 
-use crate::{usage_list, usage_read, usage_refresh};
+use crate::{usage_aggregate, usage_list, usage_read, usage_refresh};
 
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
@@ -15,6 +15,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/usage/list" => super::value_or_error(
             usage_list::read_usage_snapshots().map(|items| UsageListResult { items }),
         ),
+        "account/usage/aggregate" => {
+            super::value_or_error(usage_aggregate::read_usage_aggregate_summary())
+        }
         "account/usage/refresh" => {
             let account_id = super::str_param(req, "accountId");
             let result = match account_id {

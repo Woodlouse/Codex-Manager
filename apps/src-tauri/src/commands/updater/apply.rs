@@ -312,7 +312,8 @@ mod tests {
         };
         fs::write(staging.join(exe_name), b"bin").expect("write exe");
 
-        let resolved = resolve_portable_restart_exe(&staging, exe_name).expect("resolved executable");
+        let resolved =
+            resolve_portable_restart_exe(&staging, exe_name).expect("resolved executable");
         assert_eq!(resolved, exe_name);
         let _ = fs::remove_dir_all(&staging);
     }

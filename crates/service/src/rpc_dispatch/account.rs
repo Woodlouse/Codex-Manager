@@ -84,6 +84,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let output_dir = super::str_param(req, "outputDir").unwrap_or("");
             super::value_or_error(account_export::export_accounts_to_directory(output_dir))
         }
+        "account/exportData" => super::value_or_error(account_export::export_accounts_data()),
         "account/login/start" => {
             let login_type = super::str_param(req, "type").unwrap_or("chatgpt");
             let open_browser = super::bool_param(req, "openBrowser").unwrap_or(true);

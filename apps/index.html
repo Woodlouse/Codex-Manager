@@ -136,6 +136,25 @@
                                 <div class="metric-sub">按今日请求估算</div>
                             </div>
                         </div>
+                        <div class="stat-card stat-card-aggregate">
+                            <div class="stat-icon"></div>
+                            <div class="stat-body stat-body-aggregate">
+                                <h3>账号池总剩余</h3>
+                                <div class="aggregate-metrics">
+                                    <div class="aggregate-line">
+                                        <span>5小时</span>
+                                        <strong id="metricPoolPrimaryRemain">--</strong>
+                                    </div>
+                                    <div class="aggregate-line">
+                                        <span>7天</span>
+                                        <strong id="metricPoolSecondaryRemain">--</strong>
+                                    </div>
+                                </div>
+                                <div id="metricPoolRemainMeta" class="metric-sub">
+                                    按已刷新账号聚合
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="dashboard-duo">
@@ -1282,7 +1301,15 @@
             <div class="modal-card">
                 <div class="modal-header">
                     <h3 id="usageTitle">用量查询</h3>
-                    <button id="closeUsageModal" class="ghost">关闭</button>
+                    <button
+                        id="closeUsageModal"
+                        class="modal-close-btn"
+                        type="button"
+                        aria-label="关闭"
+                        title="关闭"
+                    >
+                        <span aria-hidden="true">&times;</span>
+                    </button>
                 </div>
                 <div class="modal-body">
                     <div id="usageProgress" class="progress"></div>

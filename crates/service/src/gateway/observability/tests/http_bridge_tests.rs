@@ -697,7 +697,7 @@ fn openai_chat_sse_reader_requires_terminal_event_before_success() {
     assert!(!collector.saw_terminal);
     assert_eq!(
         collector.terminal_error.as_deref(),
-        Some("stream disconnected before completion")
+        Some("上游流中途中断（未正常结束）")
     );
 }
 
@@ -725,7 +725,7 @@ fn openai_completions_sse_reader_requires_terminal_event_before_success() {
     assert!(!collector.saw_terminal);
     assert_eq!(
         collector.terminal_error.as_deref(),
-        Some("stream disconnected before completion")
+        Some("上游流中途中断（未正常结束）")
     );
 }
 
@@ -761,6 +761,42 @@ fn passthrough_sse_reader_emits_keepalive_for_responses_stream() {
     assert!(mapped.contains("\"type\":\"codexmanager.keepalive\""));
     assert!(mapped.contains("\"type\":\"response.created\""));
     assert!(mapped.contains("data: [DONE]"));
+}
+
+#[test]
+fn passthrough_sse_reader_captures_raw_html_error_body() {
+    let (upstream, server) = open_streaming_mock_http_response(
+        "text/html",
+        &[(
+            "<html><title>Just a moment...</title><body>cf</body></html>",
+            0,
+        )],
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = PassthroughSseUsageReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        SseKeepAliveFrame::OpenAIResponses,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read passthrough html body");
+    server.join().expect("join html mock upstream");
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(mapped.contains("Just a moment"));
+    assert_eq!(
+        collector.upstream_error_hint.as_deref(),
+        Some("Cloudflare 安全验证页（title=Just a moment...）")
+    );
+    assert_eq!(
+        collector.terminal_error.as_deref(),
+        Some("上游流中途中断（未正常结束）")
+    );
 }
 
 #[test]

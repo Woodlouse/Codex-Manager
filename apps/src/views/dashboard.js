@@ -3,6 +3,7 @@ import { dom } from "../ui/dom";
 import {
   calcAvailability,
   formatLimitLabel,
+  computeAggregateRemainingStats,
   computeUsageStats,
   formatCompactNumber,
   formatTs,
@@ -37,6 +38,10 @@ function formatTokenCount(value) {
 function formatEstimatedCost(value) {
   const num = Math.max(0, toSafeNumber(value, 0));
   return `$${num.toFixed(2)}`;
+}
+
+function formatPercentMetric(value) {
+  return value == null ? "--" : `${value}%`;
 }
 
 function getUsageMapFromState() {
@@ -98,6 +103,33 @@ export function renderDashboard() {
   if (dom.metricTodayCost) {
     dom.metricTodayCost.textContent = formatEstimatedCost(state.requestLogTodaySummary?.estimatedCost);
   }
+  const aggregateStats = normalizeAggregateStats(
+    state.usageAggregateSummary,
+    state.accountList,
+    usageMap,
+  );
+  if (dom.metricPoolPrimaryRemain) {
+    dom.metricPoolPrimaryRemain.textContent = formatPercentMetric(
+      aggregateStats.primaryRemainPercent,
+    );
+  }
+  if (dom.metricPoolSecondaryRemain) {
+    dom.metricPoolSecondaryRemain.textContent = formatPercentMetric(
+      aggregateStats.secondaryRemainPercent,
+    );
+  }
+  if (dom.metricPoolRemainMeta) {
+    dom.metricPoolRemainMeta.replaceChildren();
+    const primaryMeta = document.createElement("span");
+    primaryMeta.className = "aggregate-meta-line";
+    primaryMeta.textContent =
+      `已统计 5小时 ${aggregateStats.primaryKnownCount}/${aggregateStats.primaryBucketCount}`;
+    const secondaryMeta = document.createElement("span");
+    secondaryMeta.className = "aggregate-meta-line";
+    secondaryMeta.textContent =
+      `已统计 7天 ${aggregateStats.secondaryKnownCount}/${aggregateStats.secondaryBucketCount}`;
+    dom.metricPoolRemainMeta.append(primaryMeta, secondaryMeta);
+  }
 
   renderCurrentAccount(
     state.accountList,
@@ -106,6 +138,19 @@ export function renderDashboard() {
     state.manualPreferredAccountId,
   );
   renderRecommendations(state.accountList, usageMap);
+}
+
+function normalizeAggregateStats(summary, accounts, usageMap) {
+  if (summary && typeof summary === "object") {
+    const hasPrimary =
+      summary.primaryBucketCount != null || summary.primaryRemainPercent != null;
+    const hasSecondary =
+      summary.secondaryBucketCount != null || summary.secondaryRemainPercent != null;
+    if (hasPrimary || hasSecondary) {
+      return summary;
+    }
+  }
+  return computeAggregateRemainingStats(accounts, usageMap);
 }
 
 function canParticipateInRouting(level) {

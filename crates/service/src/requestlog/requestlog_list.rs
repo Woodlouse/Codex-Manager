@@ -2,6 +2,12 @@ use codexmanager_core::rpc::types::RequestLogSummary;
 
 use crate::storage_helpers::open_storage;
 
+fn normalize_upstream_url(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 pub(crate) fn read_request_logs(
     query: Option<String>,
     limit: Option<i64>,
@@ -23,8 +29,9 @@ pub(crate) fn read_request_logs(
             model: item.model,
             reasoning_effort: item.reasoning_effort,
             response_adapter: item.response_adapter,
-            upstream_url: item.upstream_url,
+            upstream_url: normalize_upstream_url(item.upstream_url.as_deref()),
             status_code: item.status_code,
+            duration_ms: item.duration_ms,
             input_tokens: item.input_tokens,
             cached_input_tokens: item.cached_input_tokens,
             output_tokens: item.output_tokens,
@@ -35,4 +42,55 @@ pub(crate) fn read_request_logs(
             created_at: item.created_at,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_upstream_url;
+
+    #[test]
+    fn normalize_upstream_url_keeps_official_domains() {
+        assert_eq!(
+            normalize_upstream_url(Some(
+                "https://chatgpt.com/backend-api/codex/responses"
+            ))
+            .as_deref(),
+            Some("https://chatgpt.com/backend-api/codex/responses")
+        );
+        assert_eq!(
+            normalize_upstream_url(Some("https://api.openai.com/v1/responses"))
+                .as_deref(),
+            Some("https://api.openai.com/v1/responses")
+        );
+    }
+
+    #[test]
+    fn normalize_upstream_url_keeps_local_addresses() {
+        assert_eq!(
+            normalize_upstream_url(Some("http://127.0.0.1:3000/relay")).as_deref(),
+            Some("http://127.0.0.1:3000/relay")
+        );
+        assert_eq!(
+            normalize_upstream_url(Some("http://localhost:3000/relay")).as_deref(),
+            Some("http://localhost:3000/relay")
+        );
+    }
+
+    #[test]
+    fn normalize_upstream_url_keeps_custom_addresses() {
+        assert_eq!(
+            normalize_upstream_url(Some("https://gateway.example.com/v1")).as_deref(),
+            Some("https://gateway.example.com/v1")
+        );
+    }
+
+    #[test]
+    fn normalize_upstream_url_trims_empty_values() {
+        assert_eq!(normalize_upstream_url(None), None);
+        assert_eq!(normalize_upstream_url(Some("   ")), None);
+        assert_eq!(
+            normalize_upstream_url(Some(" https://api.openai.com/v1/responses ")).as_deref(),
+            Some("https://api.openai.com/v1/responses")
+        );
+    }
 }

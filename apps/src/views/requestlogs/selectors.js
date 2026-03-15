@@ -53,19 +53,45 @@ export function resolveDisplayRequestPath(item) {
   return String(item?.requestPath || "").trim();
 }
 
+export function sanitizeUpstreamDisplay(upstreamUrl) {
+  const raw = String(upstreamUrl || "").trim();
+  if (!raw) return "";
+  if (raw === "默认" || raw === "本地" || raw === "自定义") {
+    return raw;
+  }
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("localhost")
+    || lower.includes("127.0.0.1")
+    || lower.includes("0.0.0.0")
+    || lower.includes("[::1]")
+  ) {
+    return "本地";
+  }
+  if (
+    lower.includes("chatgpt.com")
+    || lower.includes("chat.openai.com")
+    || lower.includes("api.openai.com")
+    || lower.includes("/backend-api/codex")
+  ) {
+    return "默认";
+  }
+  return "自定义";
+}
+
 export function buildRequestRouteMeta(item, displayPath) {
   const parts = [];
   const adaptedPath = String(item?.adaptedPath || "").trim();
   const responseAdapter = String(item?.responseAdapter || "").trim();
-  const upstreamUrl = String(item?.upstreamUrl || "").trim();
+  const upstreamDisplay = sanitizeUpstreamDisplay(item?.upstreamUrl);
   if (adaptedPath && adaptedPath !== displayPath) {
     parts.push(`转发 ${adaptedPath}`);
   }
   if (responseAdapter) {
     parts.push(`适配 ${responseAdapter}`);
   }
-  if (upstreamUrl) {
-    parts.push(`上游 ${upstreamUrl}`);
+  if (upstreamDisplay) {
+    parts.push(`上游 ${upstreamDisplay}`);
   }
   return parts;
 }

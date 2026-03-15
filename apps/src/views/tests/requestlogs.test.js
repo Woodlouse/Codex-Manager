@@ -564,7 +564,7 @@ test("renderRequestLogs shows trace and route metadata, and copy prefers origina
     assert.ok(routeMeta);
     assert.match(routeMeta.textContent, /转发 \/v1\/responses/);
     assert.match(routeMeta.textContent, /适配 OpenAIChatCompletionsJson/);
-    assert.match(routeMeta.textContent, /上游 https:\/\/api\.openai\.com\/v1/);
+    assert.match(routeMeta.textContent, /上游 默认/);
     assert.equal(pathText.textContent, "/v1/chat/completions");
 
     await rows.dispatch("click", { target: copyButton });

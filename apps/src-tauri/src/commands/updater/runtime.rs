@@ -106,7 +106,9 @@ mod tests {
         let stable = Version::parse("0.1.8").expect("stable version");
         let beta = Version::parse("0.1.8-beta.1").expect("beta version");
 
-        assert!(!should_include_prerelease_updates_with_override(&stable, None));
+        assert!(!should_include_prerelease_updates_with_override(
+            &stable, None
+        ));
         assert!(should_include_prerelease_updates_with_override(&beta, None));
         assert!(should_include_prerelease_updates_with_override(
             &stable,

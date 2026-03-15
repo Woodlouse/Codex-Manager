@@ -207,7 +207,7 @@
 }
 
 @media (min-width: 1201px) {
-  .dashboard-compact .stat-card.stat-card-cost {
+.dashboard-compact .stat-card.stat-card-cost {
     grid-column: span 2;
   }
 }
@@ -215,6 +215,78 @@
 .dashboard-compact .dashboard-duo {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 8px;
+}
+
+.stat-body-aggregate {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: center;
+  width: 100%;
+}
+
+.aggregate-metrics {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  gap: 10px;
+  align-items: center;
+}
+
+.aggregate-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  min-width: 52px;
+  min-height: 0;
+  padding: 0;
+}
+
+.aggregate-line + .aggregate-line {
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+}
+
+.aggregate-line span {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.aggregate-line strong {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+
+.dashboard-compact .stat-card-aggregate .stat-body {
+  display: grid;
+}
+
+.dashboard-compact .stat-card-aggregate .metric-sub {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.aggregate-meta-line {
+  display: block;
+  white-space: nowrap;
 }
 
 .dashboard-compact .card {

@@ -130,6 +130,37 @@ pub(crate) fn respond_with_upstream(
                     upstream_error_hint,
                 });
             }
+            if is_stream && !is_sse && status.0 >= 400 {
+                let upstream_body = upstream
+                    .bytes()
+                    .map_err(|err| format!("read upstream body failed: {err}"))?;
+                let usage = if is_json {
+                    serde_json::from_slice::<Value>(upstream_body.as_ref())
+                        .ok()
+                        .map(|value| parse_usage_from_json(&value))
+                        .unwrap_or_default()
+                } else {
+                    UpstreamResponseUsage::default()
+                };
+                let upstream_error_hint =
+                    extract_error_hint_from_body(status.0, upstream_body.as_ref());
+                let len = Some(upstream_body.len());
+                let response = Response::new(
+                    status,
+                    headers,
+                    std::io::Cursor::new(upstream_body.to_vec()),
+                    len,
+                    None,
+                );
+                let delivery_error = request.respond(response).err().map(|err| err.to_string());
+                return Ok(UpstreamResponseBridgeResult {
+                    usage,
+                    stream_terminal_seen: true,
+                    stream_terminal_error: None,
+                    delivery_error,
+                    upstream_error_hint,
+                });
+            }
             if is_sse || is_stream {
                 let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
                 let response = Response::new(
@@ -153,7 +184,7 @@ pub(crate) fn respond_with_upstream(
                     stream_terminal_seen: collector.saw_terminal,
                     stream_terminal_error: collector.terminal_error,
                     delivery_error,
-                    upstream_error_hint: None,
+                    upstream_error_hint: collector.upstream_error_hint,
                 });
             }
             let len = upstream.content_length().map(|v| v as usize);

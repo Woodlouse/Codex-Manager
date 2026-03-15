@@ -8,6 +8,7 @@ export function createAppRuntime(deps) {
     ensureConnected,
     refreshAccounts,
     refreshAccountsPage,
+    refreshUsageAggregateSummary,
     refreshUsageList,
     refreshApiKeys,
     refreshApiModels,
@@ -175,6 +176,11 @@ export function createAppRuntime(deps) {
         if (modelTask && modelTask.status === "fulfilled") {
           writeLastApiModelsRemoteRefreshAt(Date.now());
         }
+      }
+      try {
+        await refreshUsageAggregateSummary();
+      } catch (err) {
+        console.error("[refreshAll] usage-aggregate failed", err);
       }
 
       const failedTasks = results.filter((item) => item.status === "rejected");

@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-inter);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+@layer base {
+  *, ::after, ::before, ::placeholder { border-color: var(--border); }
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: rgba(255, 255, 255, 0.85); 
+  --card-foreground: #09090b;
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-foreground: #09090b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: rgba(244, 244, 245, 0.8);
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: rgba(24, 24, 27, 0.05);
+  --accent-foreground: #18181b;
+  /* 增强边框可见度 */
+  --border: rgba(148, 163, 184, 0.25);
+  --input: rgba(148, 163, 184, 0.25);
+  --ring: #18181b;
+  --radius: 1.25rem;
+  
+  --bg-color: #f8fbff;
+  --bg-gradient-1: #dbeafe;
+  --bg-gradient-2: #e0f2fe;
+  --bg-gradient-3: #ffffff; 
+}
+
+/* Themes */
+[data-theme='tech'] { --primary: #2563eb; --bg-color: #f0f7ff; --bg-gradient-1: #bfdbfe; --bg-gradient-2: #cffafe; --bg-gradient-3: #ffffff; }
+[data-theme='dark'] { --background: #09090b; --foreground: #fafafa; --card: rgba(24, 24, 27, 0.9); --popover: rgba(15, 15, 18, 0.98); --primary: #fafafa; --border: rgba(255, 255, 255, 0.15); --bg-color: #09090b; --bg-gradient-1: #18181b; --bg-gradient-2: #09090b; --bg-gradient-3: #000000; }
+[data-theme='dark-one'] { --background: #21252b; --foreground: #abb2bf; --card: rgba(40, 44, 52, 0.92); --popover: rgba(33, 37, 43, 0.98); --primary: #61afef; --border: rgba(255, 255, 255, 0.12); --bg-color: #1b1e23; --bg-gradient-1: #282c34; --bg-gradient-2: #21252b; --bg-gradient-3: #1b1e23; }
+[data-theme='business'] { --primary: #c28100; --bg-color: #fffaf0; --bg-gradient-1: #fef3c7; --bg-gradient-2: #ffedd5; --bg-gradient-3: #ffffff; }
+[data-theme='mint'] { --primary: #059669; --bg-color: #f0fdf4; --bg-gradient-1: #d1fae5; --bg-gradient-2: #ccfbf1; --bg-gradient-3: #ffffff; }
+[data-theme='sunset'] { --primary: #ea580c; --bg-color: #fff7ed; --bg-gradient-1: #ffedd5; --bg-gradient-2: #fee2e2; --bg-gradient-3: #ffffff; }
+[data-theme='grape'] { --primary: #7c3aed; --bg-color: #f5f3ff; --bg-gradient-1: #ede9fe; --bg-gradient-2: #fae8ff; --bg-gradient-3: #ffffff; }
+[data-theme='ocean'] { --primary: #0284c7; --bg-color: #f0f9ff; --bg-gradient-1: #e0f2fe; --bg-gradient-2: #bae6fd; --bg-gradient-3: #ffffff; }
+[data-theme='forest'] { --primary: #166534; --bg-color: #f0fdf4; --bg-gradient-1: #dcfce7; --bg-gradient-2: #f0fdf4; --bg-gradient-3: #ffffff; }
+[data-theme='rose'] { --primary: #db2777; --bg-color: #fff1f2; --bg-gradient-1: #ffe4e6; --bg-gradient-2: #fae8ff; --bg-gradient-3: #ffffff; }
+[data-theme='slate'] { --primary: #475569; --bg-color: #f8fafc; --bg-gradient-1: #f1f5f9; --bg-gradient-2: #e2e8f0; --bg-gradient-3: #ffffff; }
+[data-theme='aurora'] { --primary: #0d9488; --bg-color: #f0fdfa; --bg-gradient-1: #ccfbf1; --bg-gradient-2: #e0f2fe; --bg-gradient-3: #ffffff; }
+
+@layer base {
+  body {
+    @apply text-foreground min-h-screen transition-all duration-700 ease-in-out;
+    background-color: var(--bg-color);
+    background-image: 
+      radial-gradient(at 0% 0%, var(--bg-gradient-1) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, var(--bg-gradient-2) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, var(--bg-gradient-3) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+/* Glassmorphism Standard CSS */
+.glass-card {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  background: var(--card);
+  /* 强化边框可见度 */
+  border: 1.5px solid var(--border);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05);
+  transition: all 0.3s;
+}
+
+.glass-sidebar {
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  background: rgba(255, 255, 255, 0.6);
+  border-right: 1.5px solid var(--border);
+  transition: all 0.5s;
+}
+
+.dark .glass-sidebar, [data-theme='dark'] .glass-sidebar, [data-theme='dark-one'] .glass-sidebar { background: rgba(0, 0, 0, 0.4); }
+
+.glass-header {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.7);
+  border-bottom: 1.5px solid var(--border);
+  transition: all 0.3s;
+}
+
+.dark .glass-header, [data-theme='dark'] .glass-header, [data-theme='dark-one'] .glass-header { background: rgba(0, 0, 0, 0.5); }
+
+/* --- Table Enhancements --- */
+tr {
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.table-action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* 🚀 Performance Mode Logic (Fixed Selectors) */
+body.low-transparency {
+  background-image: none !important;
+  background-color: var(--bg-color) !important;
+}
+
+body.low-transparency .glass-card,
+body.low-transparency .glass-sidebar,
+body.low-transparency .glass-header,
+body.low-transparency .sonner-toast {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: var(--card-solid) !important;
+  box-shadow: none !important;
+}
+
+:root { --card-solid: #ffffff; }
+[data-theme='dark'] { --card-solid: #09090b; }
+[data-theme='dark-one'] { --card-solid: #21252b; }
+
+.sonner-toast {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25) !important;
+  border-radius: 1rem !important;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

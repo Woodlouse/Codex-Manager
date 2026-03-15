@@ -1,9 +1,7 @@
 use crate::app_storage::apply_runtime_storage_env;
 
 #[tauri::command]
-pub async fn service_listen_config_get(
-    app: tauri::AppHandle,
-) -> Result<serde_json::Value, String> {
+pub async fn service_listen_config_get(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     apply_runtime_storage_env(&app);
     tauri::async_runtime::spawn_blocking(move || {
         Ok(serde_json::json!({

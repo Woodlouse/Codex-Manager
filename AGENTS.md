@@ -1,150 +1,45 @@
-# Agent Instructions
+# Frontend Engineering Standards (apps_new)
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This document outlines the architectural constraints and coding conventions for the refactored Next.js frontend.
 
-## Quick Reference
+## 1. Tech Stack
+- **Framework**: Next.js 14+ (App Router).
+- **Language**: TypeScript (Strict mode).
+- **Styling**: Tailwind CSS v4.
+- **UI Components**: shadcn/ui (based on @base-ui/react).
+- **State Management**: Zustand.
+- **Data Fetching**: TanStack Query (React Query) v5.
+- **Runtime**: Tauri v2.
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work atomically
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
+## 2. Design Language: Glassmorphism & Themes
+- **Ambient Background**: Use vibrant mesh gradients defined in `globals.css` that sync with the active theme.
+- **Glass Material**: 
+  - Use `.glass-sidebar` for the navigation bar.
+  - Use `.glass-header` for the top bar.
+  - Use `.glass-card` for main content containers.
+- **Performance Mode**: Always respect the `low-transparency` class on the `body`. When active, all blurs and gradients MUST be disabled in favor of solid colors (`var(--card-solid)`).
+- **Themes**: Support all 11 core themes (Enterprise Blue, Pure Black, Dark One, etc.) using `next-themes`.
 
-## Non-Interactive Shell Commands
+## 3. Component Guidelines
+- **Logic Separation**: Keep components "dumb" by moving complex logic into custom hooks (e.g., `useAccounts`, `useDashboardStats`).
+- **Semantic HTML**: Avoid nested `<button>` elements. Use `render={<span />}` and `nativeButton={false}` on triggers (like DropdownMenuTrigger) to maintain accessibility without breaking HTML specs.
+- **Client Components**: Mark interactive components with `"use client"`. Prefer Server Components for static layouts where possible.
 
-**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+## 4. API & IPC Standards
+- **Transport**: Use the centralized `invoke` and `invokeFirst` helpers from `@/lib/api/transport`.
+- **Addressing**: Always use `withAddr()` to wrap IPC parameters ensuring the backend service address is correctly injected.
+- **Error Handling**: Standardize business error unwrapping in the transport layer to show consistent toast notifications.
+- **No Fetch for IPC**: Do not use `fetch()` for backend commands in the desktop environment; use Tauri's native `invoke` for maximum reliability and speed.
 
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+## 5. Directory Structure
+- `app/`: Routing and page layouts.
+- `components/ui/`: Atomic shadcn components.
+- `components/modals/`: Feature-specific dialogs.
+- `hooks/`: Business logic hooks.
+- `lib/api/`: Typed backend client wrappers.
+- `store/`: Zustand global state stores.
+- `types/`: Shared TypeScript interfaces.
 
-**Use these forms instead:**
-```bash
-# Force overwrite without prompting
-cp -f source dest           # NOT: cp source dest
-mv -f source dest           # NOT: mv source dest
-rm -f file                  # NOT: rm file
-
-# For recursive operations
-rm -rf directory            # NOT: rm -r directory
-cp -rf source dest          # NOT: cp -r source dest
-```
-
-**Other commands that may prompt:**
-- `scp` - use `-o BatchMode=yes` for non-interactive
-- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
-- `apt-get` - use `-y` flag
-- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
-
-<!-- BEGIN BEADS INTEGRATION -->
-## Issue Tracking with bd (beads)
-
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
-
-### Why bd?
-
-- Dependency-aware: Track blockers and relationships between issues
-- Version-controlled: Built on Dolt with cell-level merge
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
-
-### Quick Start
-
-**Check for ready work:**
-
-```bash
-bd ready --json
-```
-
-**Create new issues:**
-
-```bash
-bd create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:bd-123 --json
-```
-
-**Claim and update:**
-
-```bash
-bd update <id> --claim --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task atomically**: `bd update <id> --claim`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-
-### Auto-Sync
-
-bd automatically syncs with git:
-
-- Exports to `.beads/issues.jsonl` after changes (5s debounce)
-- Imports from JSONL when newer (e.g., after `git pull`)
-- No manual export/import needed!
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-
-For more details, see README.md and docs/QUICKSTART.md.
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-<!-- END BEADS INTEGRATION -->
+## 6. Development Workflow
+- **Validation**: Every significant change must be verified with `pnpm run build:desktop` to ensure static export compatibility.
+- **Sync**: Ensure all new backend commands are added to `lib/api/` with correct underscore/camelCase mapping.

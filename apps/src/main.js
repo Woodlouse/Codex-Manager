@@ -43,6 +43,7 @@ import {
 import {
   refreshAccounts,
   refreshAccountsPage,
+  refreshUsageAggregateSummary,
   refreshUsageList,
   refreshApiKeys,
   refreshApiModels,
@@ -424,6 +425,7 @@ const {
   ensureConnected,
   refreshAccounts,
   refreshAccountsPage,
+  refreshUsageAggregateSummary,
   refreshUsageList,
   refreshApiKeys,
   refreshApiModels,
@@ -470,6 +472,7 @@ async function refreshPageDataForView(page = state.currentPage, options = {}) {
         refreshRequestLogTodaySummary(),
         refreshRequestLogs(state.requestLogQuery, { latestOnly: true }),
       ]);
+      await refreshUsageAggregateSummary();
     } else if (page === "apikeys") {
       await Promise.all([
         refreshApiKeys(),

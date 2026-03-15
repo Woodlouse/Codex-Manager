@@ -1,5 +1,41 @@
 import { invoke, isTauriRuntime, rpcInvoke, withAddr } from "./transport.js";
 
+async function exportAccountsByDirectoryPicker(result) {
+  const picker = globalThis.window && window.showDirectoryPicker;
+  if (typeof picker !== "function") {
+    throw new Error("当前浏览器不支持目录导出，请使用 Chromium 内核浏览器或桌面端");
+  }
+
+  let directoryHandle;
+  try {
+    directoryHandle = await picker.call(window, { mode: "readwrite" });
+  } catch (err) {
+    if (err && (err.name === "AbortError" || err.code === 20)) {
+      return { canceled: true };
+    }
+    throw err;
+  }
+
+  const files = Array.isArray(result?.files) ? result.files : [];
+  for (const item of files) {
+    const fileName = String(item?.fileName || "").trim();
+    if (!fileName) continue;
+    const fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    try {
+      await writable.write(String(item?.content || ""));
+    } finally {
+      await writable.close();
+    }
+  }
+
+  return {
+    ...result,
+    canceled: false,
+    outputDir: directoryHandle && directoryHandle.name ? directoryHandle.name : "",
+  };
+}
+
 function normalizeAccountListOptions(options = {}) {
   const source = options && typeof options === "object" ? options : {};
   const normalized = {};
@@ -83,7 +119,8 @@ export async function serviceAccountImportByDirectory() {
 
 export async function serviceAccountExportByAccountFiles() {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器模式暂不支持目录导出，请使用桌面端");
+    const result = await rpcInvoke("account/exportData");
+    return exportAccountsByDirectoryPicker(result);
   }
   return invoke("service_account_export_by_account_files", withAddr());
 }
@@ -107,6 +144,13 @@ export async function serviceUsageList() {
     return rpcInvoke("account/usage/list");
   }
   return invoke("service_usage_list", withAddr());
+}
+
+export async function serviceUsageAggregate() {
+  if (!isTauriRuntime()) {
+    return rpcInvoke("account/usage/aggregate");
+  }
+  return invoke("service_usage_aggregate", withAddr());
 }
 
 export async function serviceUsageRefresh(accountId) {

@@ -95,7 +95,14 @@ fn select_macos_dmg_asset_for_arch(
         }
     }
 
-    let known_arch_suffixes = ["aarch64", "arm64", "x64", "x86_64", "universal", "universal2"];
+    let known_arch_suffixes = [
+        "aarch64",
+        "arm64",
+        "x64",
+        "x86_64",
+        "universal",
+        "universal2",
+    ];
     dmg_assets.into_iter().find(|asset| {
         !known_arch_suffixes
             .iter()
@@ -376,9 +383,7 @@ pub(super) fn prepare_update_impl(app: &tauri::AppHandle) -> Result<UpdatePrepar
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        portable_asset_names_for_platform, sanitize_tag, select_macos_dmg_asset_for_arch,
-    };
+    use super::{portable_asset_names_for_platform, sanitize_tag, select_macos_dmg_asset_for_arch};
     use crate::commands::updater::model::GitHubAsset;
 
     #[test]

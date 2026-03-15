@@ -4,10 +4,10 @@
   "version": "0.1.8",
   "identifier": "com.codexmanager.desktop",
   "build": {
-    "beforeDevCommand": "pnpm run dev",
-    "beforeBuildCommand": "pnpm run build",
-    "devUrl": "http://localhost:5173",
-    "frontendDist": "../dist"
+    "beforeDevCommand": "pnpm --dir ../apps_new run dev:desktop",
+    "beforeBuildCommand": "pnpm --dir ../apps_new run build:desktop",
+    "devUrl": "http://127.0.0.1:3005",
+    "frontendDist": "../../apps_new/out"
   },
   "app": {
     "withGlobalTauri": true,

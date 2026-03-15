@@ -30,5 +30,5 @@ semver = "1.0"
 sha2 = "0.10"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
-
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 

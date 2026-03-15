@@ -1,6 +1,11 @@
 use codexmanager_core::storage::Storage;
+use rusqlite::{backup::Backup, Connection};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+const PRIMARY_APP_IDENTIFIER: &str = "com.codexmanager.desktop";
+const QA_APP_IDENTIFIER: &str = "com.codexmanager.desktop.qa";
 
 pub(super) fn maybe_migrate_legacy_db(current_db: &Path) {
     let current_has_data = db_has_user_data(current_db);
@@ -13,7 +18,7 @@ pub(super) fn maybe_migrate_legacy_db(current_db: &Path) {
         return;
     }
 
-    for legacy_db in legacy_db_candidates(current_db) {
+    for legacy_db in bootstrap_db_candidates(current_db) {
         if !legacy_db.is_file() {
             continue;
         }
@@ -37,7 +42,7 @@ pub(super) fn maybe_migrate_legacy_db(current_db: &Path) {
             }
         }
 
-        match fs::copy(&legacy_db, current_db) {
+        match copy_db_snapshot(&legacy_db, current_db) {
             Ok(_) => {
                 log::info!(
                     "Migrated legacy db {} -> {}",
@@ -56,6 +61,64 @@ pub(super) fn maybe_migrate_legacy_db(current_db: &Path) {
             }
         }
     }
+}
+
+fn copy_db_snapshot(source: &Path, target: &Path) -> Result<(), String> {
+    remove_db_sidecars(target);
+    if target.is_file() {
+        fs::remove_file(target).map_err(|err| {
+            format!(
+                "remove existing target db {} failed: {err}",
+                target.display()
+            )
+        })?;
+    }
+
+    let source_conn = Connection::open(source)
+        .map_err(|err| format!("open source db {} failed: {err}", source.display()))?;
+    source_conn
+        .busy_timeout(Duration::from_millis(3000))
+        .map_err(|err| format!("configure source db {} failed: {err}", source.display()))?;
+
+    let mut target_conn = Connection::open(target)
+        .map_err(|err| format!("open target db {} failed: {err}", target.display()))?;
+    target_conn
+        .busy_timeout(Duration::from_millis(3000))
+        .map_err(|err| format!("configure target db {} failed: {err}", target.display()))?;
+
+    let backup = Backup::new(&source_conn, &mut target_conn).map_err(|err| {
+        format!(
+            "create sqlite backup {} -> {} failed: {err}",
+            source.display(),
+            target.display()
+        )
+    })?;
+    backup
+        .run_to_completion(64, Duration::from_millis(25), None)
+        .map_err(|err| {
+            format!(
+                "run sqlite backup {} -> {} failed: {err}",
+                source.display(),
+                target.display()
+            )
+        })?;
+    Ok(())
+}
+
+fn remove_db_sidecars(path: &Path) {
+    for sidecar in db_sidecar_paths(path) {
+        if sidecar.is_file() {
+            let _ = fs::remove_file(sidecar);
+        }
+    }
+}
+
+fn db_sidecar_paths(path: &Path) -> [PathBuf; 2] {
+    let base = path.as_os_str().to_string_lossy();
+    [
+        PathBuf::from(format!("{base}-wal")),
+        PathBuf::from(format!("{base}-shm")),
+    ]
 }
 
 fn db_has_user_data(path: &Path) -> bool {
@@ -97,12 +160,123 @@ fn legacy_db_candidates(current_db: &Path) -> Vec<PathBuf> {
         }
     }
 
-    out.retain(|candidate| candidate != current_db);
+    dedup_candidates(current_db, out)
+}
+
+fn bootstrap_db_candidates(current_db: &Path) -> Vec<PathBuf> {
+    let mut out = profile_db_candidates(current_db);
+    out.extend(legacy_db_candidates(current_db));
+    dedup_candidates(current_db, out)
+}
+
+fn profile_db_candidates(current_db: &Path) -> Vec<PathBuf> {
+    let Some(parent) = current_db.parent() else {
+        return Vec::new();
+    };
+    let Some(parent_name) = parent.file_name().and_then(|name| name.to_str()) else {
+        return Vec::new();
+    };
+    if !parent_name.eq_ignore_ascii_case(QA_APP_IDENTIFIER) {
+        return Vec::new();
+    }
+
+    let Some(root) = parent.parent() else {
+        return Vec::new();
+    };
+    vec![root.join(PRIMARY_APP_IDENTIFIER).join("codexmanager.db")]
+}
+
+fn dedup_candidates(current_db: &Path, candidates: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut dedup = Vec::new();
-    for candidate in out {
+    for candidate in candidates {
+        if candidate == current_db {
+            continue;
+        }
         if !dedup.iter().any(|item| item == &candidate) {
             dedup.push(candidate);
         }
     }
     dedup
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        maybe_migrate_legacy_db, profile_db_candidates, PRIMARY_APP_IDENTIFIER, QA_APP_IDENTIFIER,
+    };
+    use codexmanager_core::storage::{now_ts, Account, Storage};
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("codexmanager-qa-migration-test-{unique}"))
+    }
+
+    fn create_populated_db(path: &Path) -> Storage {
+        let storage = Storage::open(path).expect("open storage");
+        storage.init().expect("init storage");
+        storage
+            .insert_account(&Account {
+                id: "acc-1".to_string(),
+                label: "main".to_string(),
+                issuer: "https://auth.openai.com".to_string(),
+                chatgpt_account_id: Some("acct_123".to_string()),
+                workspace_id: Some("org_123".to_string()),
+                group_name: None,
+                sort: 0,
+                status: "healthy".to_string(),
+                created_at: now_ts(),
+                updated_at: now_ts(),
+            })
+            .expect("insert account");
+        storage
+    }
+
+    #[test]
+    fn profile_db_candidates_only_seed_qa_profile_from_primary_profile() {
+        let qa_db = PathBuf::from(format!(
+            "C:/Users/test/AppData/Roaming/{QA_APP_IDENTIFIER}/codexmanager.db"
+        ));
+        assert_eq!(
+            profile_db_candidates(&qa_db),
+            vec![PathBuf::from(format!(
+                "C:/Users/test/AppData/Roaming/{PRIMARY_APP_IDENTIFIER}/codexmanager.db"
+            ))]
+        );
+
+        let primary_db = PathBuf::from(format!(
+            "C:/Users/test/AppData/Roaming/{PRIMARY_APP_IDENTIFIER}/codexmanager.db"
+        ));
+        assert!(profile_db_candidates(&primary_db).is_empty());
+    }
+
+    #[test]
+    fn maybe_migrate_legacy_db_seeds_empty_qa_profile_from_primary_profile() {
+        let root = unique_temp_dir();
+        let qa_dir = root.join(QA_APP_IDENTIFIER);
+        let primary_dir = root.join(PRIMARY_APP_IDENTIFIER);
+        std::fs::create_dir_all(&qa_dir).expect("create qa dir");
+        std::fs::create_dir_all(&primary_dir).expect("create primary dir");
+
+        let qa_db = qa_dir.join("codexmanager.db");
+        let primary_db = primary_dir.join("codexmanager.db");
+
+        let qa_storage = Storage::open(&qa_db).expect("open qa storage");
+        qa_storage.init().expect("init qa storage");
+        drop(qa_storage);
+
+        let _source_storage = create_populated_db(&primary_db);
+
+        maybe_migrate_legacy_db(&qa_db);
+
+        let migrated = Storage::open(&qa_db).expect("open migrated qa storage");
+        migrated.init().expect("init migrated qa storage");
+        assert_eq!(migrated.account_count().expect("count accounts"), 1);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

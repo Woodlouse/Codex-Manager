@@ -1,10 +1,11 @@
 use codexmanager_core::storage::now_ts;
+use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -14,6 +15,7 @@ const ENV_TRACE_QUEUE_CAPACITY: &str = "CODEXMANAGER_TRACE_QUEUE_CAPACITY";
 
 static TRACE_WRITER: OnceLock<TraceAsyncWriter> = OnceLock::new();
 static TRACE_SEQ: AtomicU64 = AtomicU64::new(1);
+static TRACE_ERROR_TRACES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 enum TraceCommand {
     Append {
@@ -158,6 +160,35 @@ fn append_trace_line(line: String, flush: bool) {
     trace_writer().append_line(line, flush);
 }
 
+fn trace_error_traces() -> &'static Mutex<HashSet<String>> {
+    TRACE_ERROR_TRACES.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn mark_trace_has_error(trace_id: &str) {
+    if let Ok(mut traces) = trace_error_traces().lock() {
+        traces.insert(trace_id.to_string());
+    }
+}
+
+fn trace_has_error(trace_id: &str) -> bool {
+    trace_error_traces()
+        .lock()
+        .map(|traces| traces.contains(trace_id))
+        .unwrap_or(false)
+}
+
+fn clear_trace_error(trace_id: &str) {
+    if let Ok(mut traces) = trace_error_traces().lock() {
+        traces.remove(trace_id);
+    }
+}
+
+fn has_error_text(error: Option<&str>) -> bool {
+    error
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty() && value != "-")
+}
+
 fn trace_writer() -> &'static TraceAsyncWriter {
     TRACE_WRITER.get_or_init(|| TraceAsyncWriter::new(trace_file_path_from_env()))
 }
@@ -199,6 +230,7 @@ pub(super) fn reload_from_env() {
 }
 
 pub(crate) fn next_trace_id() -> String {
+    trace_writer().reset_path(trace_file_path_from_env());
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|v| v.as_millis())
@@ -217,6 +249,9 @@ pub(crate) fn log_request_start(
     is_stream: bool,
     protocol_type: &str,
 ) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let model = model.unwrap_or("-");
     let reasoning = reasoning.unwrap_or("-");
@@ -235,6 +270,9 @@ pub(crate) fn log_request_start(
 }
 
 pub(crate) fn log_request_body_preview(trace_id: &str, body: &[u8]) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let preview_max_bytes = super::trace_body_preview_max_bytes();
     if preview_max_bytes == 0 {
@@ -265,6 +303,9 @@ pub(crate) fn log_request_body_preview(trace_id: &str, body: &[u8]) {
 }
 
 pub(crate) fn log_request_gate_wait(trace_id: &str, key_id: &str, path: &str, model: Option<&str>) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let line = format!(
         "ts={ts} event=REQUEST_GATE_WAIT trace_id={} key_id={} path={} model={}",
@@ -283,6 +324,9 @@ pub(crate) fn log_request_gate_acquired(
     model: Option<&str>,
     wait_ms: u128,
 ) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let line = format!(
         "ts={ts} event=REQUEST_GATE_ACQUIRED trace_id={} key_id={} path={} model={} wait_ms={}",
@@ -296,6 +340,9 @@ pub(crate) fn log_request_gate_acquired(
 }
 
 pub(crate) fn log_request_gate_skip(trace_id: &str, reason: &str) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let line = format!(
         "ts={ts} event=REQUEST_GATE_SKIP trace_id={} reason={}",
@@ -312,6 +359,9 @@ pub(crate) fn log_candidate_start(
     account_id: &str,
     strip_session_affinity: bool,
 ) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let line = format!(
         "ts={ts} event=CANDIDATE_START trace_id={} candidate={}/{} account_id={} strip_session_affinity={}",
@@ -330,6 +380,9 @@ pub(crate) fn log_candidate_pool(
     strategy: &str,
     candidates: &[String],
 ) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let ordered = if candidates.is_empty() {
         "-".to_string()
@@ -357,6 +410,9 @@ pub(crate) fn log_candidate_skip(
     account_id: &str,
     reason: &str,
 ) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let line = format!(
         "ts={ts} event=CANDIDATE_SKIP trace_id={} candidate={}/{} account_id={} reason={}",
@@ -376,6 +432,13 @@ pub(crate) fn log_attempt_result(
     status_code: u16,
     error: Option<&str>,
 ) {
+    let should_mark_error = status_code >= 400 || has_error_text(error);
+    if should_mark_error {
+        mark_trace_has_error(trace_id);
+    }
+    if !should_mark_error && !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let url = upstream_url.unwrap_or("-");
     let code = crate::error_codes::code_or_dash(error);
@@ -404,6 +467,15 @@ pub(crate) fn log_bridge_result(
     output_text_len: usize,
     output_tokens: Option<i64>,
 ) {
+    let bridge_has_error = delivery_error.is_some()
+        || stream_terminal_error.is_some()
+        || (is_stream && !stream_terminal_seen);
+    if bridge_has_error {
+        mark_trace_has_error(trace_id);
+    }
+    if !bridge_has_error && !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let line = format!(
         "ts={ts} event=BRIDGE_RESULT trace_id={} adapter={} path={} stream={} terminal_seen={} terminal_error={} delivery_error={} output_text_len={} output_tokens={}",
@@ -437,6 +509,9 @@ pub(crate) fn log_attempt_profile(
     body_len: usize,
     body_model: Option<&str>,
 ) {
+    if !trace_has_error(trace_id) {
+        return;
+    }
     let ts = now_ts();
     let prompt_cache_key_fp = prompt_cache_key
         .map(short_fingerprint)
@@ -477,6 +552,14 @@ pub(crate) fn log_request_final(
     error: Option<&str>,
     elapsed_ms: u128,
 ) {
+    let should_mark_error = status_code >= 400 || has_error_text(error);
+    if should_mark_error {
+        mark_trace_has_error(trace_id);
+    }
+    let should_log = should_mark_error || trace_has_error(trace_id);
+    if !should_log {
+        return;
+    }
     let ts = now_ts();
     let account_id = final_account_id.unwrap_or("-");
     let upstream_url = upstream_url.unwrap_or("-");
@@ -493,4 +576,29 @@ pub(crate) fn log_request_final(
         sanitize_text(error),
     );
     append_trace_line(line, true);
+    clear_trace_error(trace_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clear_trace_error, has_error_text, mark_trace_has_error, trace_has_error};
+
+    #[test]
+    fn has_error_text_ignores_empty_and_dash() {
+        assert!(!has_error_text(None));
+        assert!(!has_error_text(Some("")));
+        assert!(!has_error_text(Some(" - ")));
+        assert!(has_error_text(Some("upstream failed")));
+    }
+
+    #[test]
+    fn trace_error_state_can_mark_and_clear() {
+        let trace_id = "trc_trace_log_unit";
+        clear_trace_error(trace_id);
+        assert!(!trace_has_error(trace_id));
+        mark_trace_has_error(trace_id);
+        assert!(trace_has_error(trace_id));
+        clear_trace_error(trace_id);
+        assert!(!trace_has_error(trace_id));
+    }
 }

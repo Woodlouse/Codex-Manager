@@ -73,8 +73,17 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     if normalized == "upstream total timeout exceeded" {
         return ErrorCode::UpstreamTimeout;
     }
+    if normalized == "上游请求超时" || normalized.contains("连接超时") {
+        return ErrorCode::UpstreamTimeout;
+    }
     if normalized.starts_with("upstream blocked by cloudflare/waf")
         || normalized == "upstream challenge blocked"
+    {
+        return ErrorCode::UpstreamChallengeBlocked;
+    }
+    if normalized.contains("cloudflare/waf")
+        || normalized.contains("安全验证拦截")
+        || normalized.contains("验证/拦截页面")
     {
         return ErrorCode::UpstreamChallengeBlocked;
     }
@@ -98,6 +107,20 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     }
     if normalized == "stream disconnected before completion" {
         return ErrorCode::StreamInterrupted;
+    }
+    if normalized.starts_with("上游流中途中断")
+        || normalized.starts_with("上游流读取失败（连接中断）")
+        || normalized.contains("上游连接中断")
+    {
+        return ErrorCode::StreamInterrupted;
+    }
+    if normalized.starts_with("上游返回的不是正常接口数据")
+        || normalized.starts_with("上游返回了网页内容而不是接口数据")
+    {
+        return ErrorCode::UpstreamNonSuccess;
+    }
+    if normalized.starts_with("模型不支持") {
+        return ErrorCode::UpstreamNonSuccess;
     }
     if normalized.starts_with("invalid upstream ")
         || (normalized.contains("serialize") && normalized.contains("json"))
@@ -175,6 +198,19 @@ mod tests {
         assert_eq!(
             classify_message("claude request body must be an object"),
             ErrorCode::InvalidRequestPayload
+        );
+        assert_eq!(classify_message("上游请求超时"), ErrorCode::UpstreamTimeout);
+        assert_eq!(
+            classify_message("上游被安全验证拦截（Cloudflare/WAF）"),
+            ErrorCode::UpstreamChallengeBlocked
+        );
+        assert_eq!(
+            classify_message("上游流中途中断（未正常结束）"),
+            ErrorCode::StreamInterrupted
+        );
+        assert_eq!(
+            classify_message("模型不支持（gpt-5.4）"),
+            ErrorCode::UpstreamNonSuccess
         );
     }
 }

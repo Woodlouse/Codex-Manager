@@ -1,41 +1,122 @@
+use std::sync::atomic::Ordering;
+
 use crate::service_runtime::stop_service;
 
-use super::state::{
-    should_keep_alive_for_lightweight_close, APP_EXIT_REQUESTED, CLOSE_TO_TRAY_ON_CLOSE,
-    KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE, LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY, TRAY_AVAILABLE,
+use super::prompts::{
+    confirm_discard_unsaved_settings_for_app_exit,
+    confirm_discard_unsaved_settings_for_window_close,
 };
-use super::window::MAIN_WINDOW_LABEL;
+use super::state::{
+    clear_skip_next_unsaved_settings_confirms, has_unsaved_settings_draft_sections,
+    mark_skip_next_unsaved_settings_exit_confirm,
+    mark_skip_next_unsaved_settings_window_close_confirm, should_keep_alive_for_lightweight_close,
+    take_skip_next_unsaved_settings_exit_confirm,
+    take_skip_next_unsaved_settings_window_close_confirm, APP_EXIT_REQUESTED,
+    CLOSE_TO_TRAY_ON_CLOSE, KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE, LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY,
+    TRAY_AVAILABLE,
+};
 #[cfg(target_os = "macos")]
 use super::window::show_main_window;
+use super::window::MAIN_WINDOW_LABEL;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MainWindowCloseMode {
+    AllowWindowClose,
+    HideToTray,
+    CloseForLightweightTray,
+}
+
+fn resolve_main_window_close_mode(
+    close_to_tray_on_close: bool,
+    tray_available: bool,
+    lightweight_tray_close: bool,
+) -> MainWindowCloseMode {
+    if !close_to_tray_on_close || !tray_available {
+        return MainWindowCloseMode::AllowWindowClose;
+    }
+    if lightweight_tray_close {
+        return MainWindowCloseMode::CloseForLightweightTray;
+    }
+    MainWindowCloseMode::HideToTray
+}
+
+fn should_confirm_unsaved_settings_before_window_close(
+    close_mode: MainWindowCloseMode,
+    has_unsaved_settings: bool,
+) -> bool {
+    has_unsaved_settings && close_mode != MainWindowCloseMode::HideToTray
+}
+
+fn should_confirm_unsaved_settings_before_app_exit(
+    keep_alive_for_lightweight_close: bool,
+    skip_unsaved_settings_confirm: bool,
+    has_unsaved_settings: bool,
+) -> bool {
+    has_unsaved_settings && !keep_alive_for_lightweight_close && !skip_unsaved_settings_confirm
+}
 
 pub(crate) fn handle_main_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     if window.label() != MAIN_WINDOW_LABEL {
         return;
     }
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        if APP_EXIT_REQUESTED.load(std::sync::atomic::Ordering::Relaxed) {
+        if APP_EXIT_REQUESTED.load(Ordering::Relaxed) {
             return;
         }
-        if !CLOSE_TO_TRAY_ON_CLOSE.load(std::sync::atomic::Ordering::Relaxed) {
+
+        let close_to_tray_on_close = CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed);
+        let tray_available = TRAY_AVAILABLE.load(Ordering::Relaxed);
+        let lightweight_tray_close = LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY.load(Ordering::Relaxed);
+        let close_mode = resolve_main_window_close_mode(
+            close_to_tray_on_close,
+            tray_available,
+            lightweight_tray_close,
+        );
+        let skip_unsaved_settings_window_close_confirm =
+            take_skip_next_unsaved_settings_window_close_confirm();
+
+        if should_confirm_unsaved_settings_before_window_close(
+            close_mode,
+            has_unsaved_settings_draft_sections(),
+        ) && !skip_unsaved_settings_window_close_confirm
+        {
+            api.prevent_close();
+            if !confirm_discard_unsaved_settings_for_window_close() {
+                log::info!("prevented window close because settings drafts are still unsaved");
+                return;
+            }
+            mark_skip_next_unsaved_settings_window_close_confirm();
+            mark_skip_next_unsaved_settings_exit_confirm();
+            if let Err(err) = window.close() {
+                clear_skip_next_unsaved_settings_confirms();
+                log::warn!(
+                    "confirmed unsaved settings discard but failed to re-issue window close: {}",
+                    err
+                );
+            }
             return;
         }
-        if !TRAY_AVAILABLE.load(std::sync::atomic::Ordering::Relaxed) {
-            CLOSE_TO_TRAY_ON_CLOSE.store(false, std::sync::atomic::Ordering::Relaxed);
-            return;
-        }
-        if LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::Relaxed) {
-            KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-            log::info!(
-                "window close intercepted; lightweight mode enabled, closing main window to release webview"
-            );
-            return;
-        }
-        api.prevent_close();
-        if let Err(err) = window.hide() {
-            log::warn!("hide window to tray failed: {}", err);
-        } else {
-            log::info!("window close intercepted; app hidden to tray");
+
+        match close_mode {
+            MainWindowCloseMode::AllowWindowClose => {
+                if close_to_tray_on_close && !tray_available {
+                    CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
+                }
+            }
+            MainWindowCloseMode::CloseForLightweightTray => {
+                KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(true, Ordering::Relaxed);
+                log::info!(
+                    "window close intercepted; lightweight mode enabled, closing main window to release webview"
+                );
+            }
+            MainWindowCloseMode::HideToTray => {
+                api.prevent_close();
+                if let Err(err) = window.hide() {
+                    log::warn!("hide window to tray failed: {}", err);
+                } else {
+                    log::info!("window close intercepted; app hidden to tray");
+                }
+            }
         }
         return;
     }
@@ -53,13 +134,25 @@ pub(crate) fn handle_run_event(app: &tauri::AppHandle, event: &tauri::RunEvent) 
     let _ = app;
     match event {
         tauri::RunEvent::ExitRequested { api, .. } => {
-            if should_keep_alive_for_lightweight_close() {
+            let skip_unsaved_settings_confirm = take_skip_next_unsaved_settings_exit_confirm();
+            let keep_alive_for_lightweight_close = should_keep_alive_for_lightweight_close();
+            if keep_alive_for_lightweight_close {
                 api.prevent_exit();
                 log::info!("prevented app exit for lightweight tray mode");
                 return;
             }
-            APP_EXIT_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
-            KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, std::sync::atomic::Ordering::Relaxed);
+            if should_confirm_unsaved_settings_before_app_exit(
+                keep_alive_for_lightweight_close,
+                skip_unsaved_settings_confirm,
+                has_unsaved_settings_draft_sections(),
+            ) && !confirm_discard_unsaved_settings_for_app_exit()
+            {
+                api.prevent_exit();
+                log::info!("prevented app exit because settings drafts are still unsaved");
+                return;
+            }
+            APP_EXIT_REQUESTED.store(true, Ordering::Relaxed);
+            KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, Ordering::Relaxed);
             stop_service();
         }
         #[cfg(target_os = "macos")]
@@ -67,5 +160,69 @@ pub(crate) fn handle_run_event(app: &tauri::AppHandle, event: &tauri::RunEvent) 
             show_main_window(app);
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        resolve_main_window_close_mode, should_confirm_unsaved_settings_before_app_exit,
+        should_confirm_unsaved_settings_before_window_close, MainWindowCloseMode,
+    };
+
+    #[test]
+    fn resolves_main_window_close_modes() {
+        assert_eq!(
+            resolve_main_window_close_mode(false, true, false),
+            MainWindowCloseMode::AllowWindowClose
+        );
+        assert_eq!(
+            resolve_main_window_close_mode(true, false, false),
+            MainWindowCloseMode::AllowWindowClose
+        );
+        assert_eq!(
+            resolve_main_window_close_mode(true, true, false),
+            MainWindowCloseMode::HideToTray
+        );
+        assert_eq!(
+            resolve_main_window_close_mode(true, true, true),
+            MainWindowCloseMode::CloseForLightweightTray
+        );
+    }
+
+    #[test]
+    fn confirms_window_close_only_when_window_destroy_would_drop_drafts() {
+        assert!(!should_confirm_unsaved_settings_before_window_close(
+            MainWindowCloseMode::HideToTray,
+            true,
+        ));
+        assert!(should_confirm_unsaved_settings_before_window_close(
+            MainWindowCloseMode::AllowWindowClose,
+            true,
+        ));
+        assert!(should_confirm_unsaved_settings_before_window_close(
+            MainWindowCloseMode::CloseForLightweightTray,
+            true,
+        ));
+        assert!(!should_confirm_unsaved_settings_before_window_close(
+            MainWindowCloseMode::AllowWindowClose,
+            false,
+        ));
+    }
+
+    #[test]
+    fn confirms_app_exit_only_when_unsaved_drafts_would_be_lost() {
+        assert!(should_confirm_unsaved_settings_before_app_exit(
+            false, false, true,
+        ));
+        assert!(!should_confirm_unsaved_settings_before_app_exit(
+            false, true, true,
+        ));
+        assert!(!should_confirm_unsaved_settings_before_app_exit(
+            true, false, true,
+        ));
+        assert!(!should_confirm_unsaved_settings_before_app_exit(
+            false, false, false,
+        ));
     }
 }

@@ -7,8 +7,9 @@ mod rpc_client;
 mod service_runtime;
 
 use app_shell::{
-    handle_main_window_event, handle_run_event, load_env_from_exe_dir, notify_existing_instance_focused,
-    setup_tray, show_main_window, sync_startup_window_state, CLOSE_TO_TRAY_ON_CLOSE, TRAY_AVAILABLE,
+    handle_main_window_event, handle_run_event, load_env_from_exe_dir,
+    notify_existing_instance_focused, setup_tray, show_main_window, sync_startup_window_state,
+    CLOSE_TO_TRAY_ON_CLOSE, TRAY_AVAILABLE,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
