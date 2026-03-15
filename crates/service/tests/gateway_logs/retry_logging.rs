@@ -263,7 +263,8 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
         Some("AnthropicJson")
     );
 
-    let trace_text = fs::read_to_string(&trace_log_path).expect("read trace log");
-    assert!(trace_text.contains("event=ATTEMPT_RESULT"));
-    assert!(trace_text.contains("event=REQUEST_FINAL"));
+    assert!(
+        !trace_log_path.exists(),
+        "successful retried request should not leave gateway trace log"
+    );
 }

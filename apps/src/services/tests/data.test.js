@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { state } from "../../state.js";
 import {
   hydrateFromStartupSnapshot,
+  refreshUsageAggregateSummary,
   refreshAccountsPage,
   refreshRequestLogs,
 } from "../data.js";
@@ -22,7 +23,6 @@ function deferred() {
 
 test("refreshRequestLogs aborts stale request when query changes", async () => {
   const oldWindow = globalThis.window;
-  const oldFetch = globalThis.fetch;
   const first = deferred();
   const second = deferred();
   const seenQueries = [];
@@ -31,31 +31,21 @@ test("refreshRequestLogs aborts stale request when query changes", async () => {
     globalThis.window = {
       __TAURI__: {
         core: {
-          invoke: async (method) => {
-            if (method === "service_rpc_token") {
-              return "test-token";
+          invoke: async (method, params) => {
+            if (method === "service_requestlog_list") {
+              const query = params?.query;
+              seenQueries.push(query);
+              if (query === "old") {
+                await first.promise;
+                return { result: { items: [{ id: "old" }] } };
+              }
+              await second.promise;
+              return { result: { items: [{ id: "new" }] } };
             }
             throw new Error(`unexpected invoke: ${method}`);
           },
         },
       },
-    };
-    globalThis.fetch = async (_url, options) => {
-      const signal = options && options.signal;
-      const query = JSON.parse(options.body).params.query;
-      seenQueries.push(query);
-      if (query === "old") {
-        await first.promise;
-        return {
-          ok: true,
-          json: async () => ({ result: { items: [{ id: "old" }] } }),
-        };
-      }
-      await second.promise;
-      return {
-        ok: true,
-        json: async () => ({ result: { items: [{ id: "new" }] } }),
-      };
     };
 
     state.serviceAddr = "localhost:48760";
@@ -79,7 +69,6 @@ test("refreshRequestLogs aborts stale request when query changes", async () => {
     assert.ok(state.requestLogList[0].__identity);
   } finally {
     globalThis.window = oldWindow;
-    globalThis.fetch = oldFetch;
   }
 });
 
@@ -150,6 +139,16 @@ test("hydrateFromStartupSnapshot fills startup cache state in one shot", async (
                   usageSnapshots: [
                     { accountId: "acc-1", availabilityStatus: "available", usedPercent: 20, windowMinutes: 300 },
                   ],
+                  usageAggregateSummary: {
+                    primaryBucketCount: 1,
+                    primaryKnownCount: 1,
+                    primaryUnknownCount: 0,
+                    primaryRemainPercent: 80,
+                    secondaryBucketCount: 1,
+                    secondaryKnownCount: 1,
+                    secondaryUnknownCount: 0,
+                    secondaryRemainPercent: 60,
+                  },
                   apiKeys: [
                     { id: "gk_1", name: "主 Key", protocolType: "openai_compat", status: "active" },
                   ],
@@ -185,6 +184,8 @@ test("hydrateFromStartupSnapshot fills startup cache state in one shot", async (
 
     assert.equal(state.accountList.length, 2);
     assert.equal(state.usageList.length, 1);
+    assert.equal(state.usageAggregateSummary.primaryRemainPercent, 80);
+    assert.equal(state.usageAggregateSummary.secondaryRemainPercent, 60);
     assert.equal(state.apiKeyList.length, 1);
     assert.equal(state.apiModelOptions.length, 1);
     assert.equal(state.manualPreferredAccountId, "acc-2");
@@ -194,6 +195,47 @@ test("hydrateFromStartupSnapshot fills startup cache state in one shot", async (
     assert.equal(state.accountPageLoaded, true);
     assert.equal(state.accountPageTotal, 2);
     assert.equal(state.accountPageItems.length, 2);
+  } finally {
+    globalThis.window = oldWindow;
+  }
+});
+
+test("refreshUsageAggregateSummary fills backend aggregate summary into state", async () => {
+  const oldWindow = globalThis.window;
+
+  try {
+    globalThis.window = {
+      __TAURI__: {
+        core: {
+          invoke: async (method) => {
+            if (method === "service_usage_aggregate") {
+              return {
+                result: {
+                  primaryBucketCount: 1,
+                  primaryKnownCount: 1,
+                  primaryUnknownCount: 0,
+                  primaryRemainPercent: 91,
+                  secondaryBucketCount: 2,
+                  secondaryKnownCount: 2,
+                  secondaryUnknownCount: 0,
+                  secondaryRemainPercent: 99,
+                },
+              };
+            }
+            throw new Error(`unexpected invoke: ${method}`);
+          },
+        },
+      },
+    };
+
+    state.usageAggregateSummary = null;
+
+    await refreshUsageAggregateSummary();
+
+    assert.equal(state.usageAggregateSummary.primaryRemainPercent, 91);
+    assert.equal(state.usageAggregateSummary.secondaryRemainPercent, 99);
+    assert.equal(state.usageAggregateSummary.primaryBucketCount, 1);
+    assert.equal(state.usageAggregateSummary.secondaryBucketCount, 2);
   } finally {
     globalThis.window = oldWindow;
   }

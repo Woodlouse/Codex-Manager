@@ -63,7 +63,10 @@ ENV CODEXMANAGER_WEB_NO_SPAWN_SERVICE=1
 ENV CODEXMANAGER_WEB_NO_OPEN=1
 # 默认值适配 docker-compose 的服务名；单独运行时可覆盖为外部 service 的地址。
 ENV CODEXMANAGER_SERVICE_ADDR=codexmanager-service:48760
+ENV CODEXMANAGER_DB_PATH=/data/codexmanager.db
+ENV CODEXMANAGER_RPC_TOKEN_FILE=/data/codexmanager.rpc-token
 
+VOLUME ["/data"]
 EXPOSE 48761
 
 CMD ["codexmanager-web"]

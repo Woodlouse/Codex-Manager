@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   calcAvailability,
+  computeAggregateRemainingStats,
   computeUsageStats,
   formatCompactNumber,
   formatResetLabel,
@@ -149,6 +150,63 @@ test("computeUsageStats returns total/ok/unavailable/lowCount in one pass", () =
   assert.equal(stats.okCount, 2);
   assert.equal(stats.unavailableCount, 1);
   assert.equal(stats.lowCount, 2);
+});
+
+test("computeAggregateRemainingStats aggregates 5h and 7d remaining percent", () => {
+  const accounts = [{ id: "a1" }, { id: "a2" }, { id: "a3" }];
+  const usageMap = new Map([
+    ["a1", { accountId: "a1", usedPercent: 20, windowMinutes: 300, secondaryUsedPercent: 10 }],
+    ["a2", { accountId: "a2", usedPercent: 50, windowMinutes: 300, secondaryUsedPercent: 80 }],
+    ["a3", { accountId: "a3", usedPercent: null, secondaryUsedPercent: null }],
+  ]);
+
+  const stats = computeAggregateRemainingStats(accounts, usageMap);
+  assert.equal(stats.totalAccounts, 3);
+  assert.equal(stats.primaryBucketCount, 2);
+  assert.equal(stats.primaryKnownCount, 2);
+  assert.equal(stats.primaryUnknownCount, 0);
+  assert.equal(stats.primaryRemainPercent, 65);
+  assert.equal(stats.secondaryBucketCount, 2);
+  assert.equal(stats.secondaryKnownCount, 2);
+  assert.equal(stats.secondaryUnknownCount, 0);
+  assert.equal(stats.secondaryRemainPercent, 55);
+});
+
+test("computeAggregateRemainingStats counts free single-window account into 7d bucket", () => {
+  const accounts = [{ id: "paid" }, { id: "free" }];
+  const usageMap = new Map([
+    [
+      "paid",
+      {
+        accountId: "paid",
+        usedPercent: 20,
+        windowMinutes: 300,
+        secondaryUsedPercent: 40,
+        secondaryWindowMinutes: 10080,
+      },
+    ],
+    [
+      "free",
+      {
+        accountId: "free",
+        usedPercent: 10,
+        windowMinutes: 10080,
+        secondaryUsedPercent: null,
+        secondaryWindowMinutes: null,
+        creditsJson: JSON.stringify({ planType: "free" }),
+      },
+    ],
+  ]);
+
+  const stats = computeAggregateRemainingStats(accounts, usageMap);
+  assert.equal(stats.primaryBucketCount, 1);
+  assert.equal(stats.primaryKnownCount, 1);
+  assert.equal(stats.primaryUnknownCount, 0);
+  assert.equal(stats.primaryRemainPercent, 80);
+  assert.equal(stats.secondaryBucketCount, 2);
+  assert.equal(stats.secondaryKnownCount, 2);
+  assert.equal(stats.secondaryUnknownCount, 0);
+  assert.equal(stats.secondaryRemainPercent, 75);
 });
 
 test("formatTs supports custom empty label", () => {

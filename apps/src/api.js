@@ -54,6 +54,7 @@ export {
   serviceLoginStatus,
   serviceUsageList,
   serviceUsageRead,
+  serviceUsageAggregate,
   serviceUsageRefresh,
 } from "./api/account-client.js";
 export {

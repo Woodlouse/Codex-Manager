@@ -23,7 +23,7 @@ fn reset_runtime_defaults() {
         codexmanager_service::SERVICE_BIND_MODE_LOOPBACK,
     );
     let _ = codexmanager_service::app_settings_set(Some(&json!({
-        "routeStrategy": "ordered",
+        "routeStrategy": "balanced",
         "lightweightModeOnCloseToTray": false,
         "cpaNoCookieHeaderModeEnabled": false,
         "upstreamProxyUrl": "",
@@ -582,6 +582,10 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
             .get("envOverrideCatalog")
             .and_then(|value| value.as_array())
             .expect("catalog array");
+        assert!(catalog.iter().all(|item| {
+            item.get("key").and_then(|value| value.as_str())
+                != Some("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS")
+        }));
         let total_timeout = catalog
             .iter()
             .find(|item| {
@@ -598,19 +602,6 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
                 .get("defaultValue")
                 .and_then(|value| value.as_str()),
             Some("120000")
-        );
-        let stream_timeout = catalog
-            .iter()
-            .find(|item| {
-                item.get("key").and_then(|value| value.as_str())
-                    == Some("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS")
-            })
-            .expect("stream timeout item");
-        assert_eq!(
-            stream_timeout
-                .get("defaultValue")
-                .and_then(|value| value.as_str()),
-            Some("1800000")
         );
         assert!(snapshot
             .get("envOverrideReservedKeys")
@@ -644,7 +635,8 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
                 .and_then(|value| value.as_str()),
             Some("localhost:1455")
         );
-        assert!(stored.len() >= 40);
+        assert!(!stored.contains_key("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"));
+        assert!(!stored.contains_key("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"));
     });
 }
 
@@ -670,6 +662,14 @@ fn app_settings_get_seeds_full_env_override_snapshot() {
                 .and_then(|value| value.as_str()),
             Some("")
         );
+        assert!(snapshot
+            .get("envOverrides")
+            .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"))
+            .is_none());
+        assert!(snapshot
+            .get("envOverrides")
+            .and_then(|value| value.get("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"))
+            .is_none());
 
         let stored = read_env_overrides_map(db_path);
         assert_eq!(
@@ -684,6 +684,82 @@ fn app_settings_get_seeds_full_env_override_snapshot() {
                 .and_then(|value| value.as_str()),
             Some("")
         );
+        assert!(!stored.contains_key("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"));
+        assert!(!stored.contains_key("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"));
+    });
+}
+
+#[test]
+fn app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+                "456789",
+                now_ts(),
+            )
+            .expect("save upstream stream timeout");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
+                "19000",
+                now_ts(),
+            )
+            .expect("save sse keepalive interval");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_ENV_OVERRIDES_KEY,
+                &serde_json::to_string(&json!({
+                    "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS": "456789",
+                    "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS": "19000",
+                    "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS": "654321"
+                }))
+                .expect("serialize env overrides"),
+                now_ts(),
+            )
+            .expect("save env overrides");
+        drop(storage);
+
+        let snapshot = codexmanager_service::app_settings_get().expect("get app settings");
+
+        assert_eq!(
+            snapshot
+                .get("upstreamStreamTimeoutMs")
+                .and_then(|value| value.as_u64()),
+            Some(456789)
+        );
+        assert_eq!(
+            snapshot
+                .get("sseKeepaliveIntervalMs")
+                .and_then(|value| value.as_u64()),
+            Some(19000)
+        );
+        assert_eq!(
+            snapshot
+                .get("envOverrides")
+                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS"))
+                .and_then(|value| value.as_str()),
+            Some("654321")
+        );
+        assert!(snapshot
+            .get("envOverrides")
+            .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"))
+            .is_none());
+        assert!(snapshot
+            .get("envOverrides")
+            .and_then(|value| value.get("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"))
+            .is_none());
+
+        let stored = read_env_overrides_map(db_path);
+        assert_eq!(
+            stored
+                .get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS")
+                .and_then(|value| value.as_str()),
+            Some("654321")
+        );
+        assert!(!stored.contains_key("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"));
+        assert!(!stored.contains_key("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"));
     });
 }
 

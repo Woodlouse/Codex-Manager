@@ -561,6 +561,105 @@ fn rpc_usage_list_empty() {
 }
 
 #[test]
+fn rpc_usage_aggregate_returns_backend_summary() {
+    let ctx = RpcTestContext::new("rpc-usage-aggregate");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc-pro".to_string(),
+            label: "Pro".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: None,
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert pro account");
+    storage
+        .insert_account(&Account {
+            id: "acc-free".to_string(),
+            label: "Free".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: None,
+            workspace_id: None,
+            group_name: None,
+            sort: 1,
+            status: "active".to_string(),
+            created_at: now + 1,
+            updated_at: now + 1,
+        })
+        .expect("insert free account");
+
+    storage
+        .insert_usage_snapshot(&UsageSnapshotRecord {
+            account_id: "acc-pro".to_string(),
+            used_percent: Some(10.0),
+            window_minutes: Some(300),
+            resets_at: None,
+            secondary_used_percent: Some(40.0),
+            secondary_window_minutes: Some(10080),
+            secondary_resets_at: None,
+            credits_json: None,
+            captured_at: now,
+        })
+        .expect("insert pro usage");
+    storage
+        .insert_usage_snapshot(&UsageSnapshotRecord {
+            account_id: "acc-free".to_string(),
+            used_percent: Some(20.0),
+            window_minutes: Some(10080),
+            resets_at: None,
+            secondary_used_percent: None,
+            secondary_window_minutes: None,
+            secondary_resets_at: None,
+            credits_json: Some(r#"{"planType":"free"}"#.to_string()),
+            captured_at: now,
+        })
+        .expect("insert free usage");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 71,
+        method: "account/usage/aggregate".to_string(),
+        params: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+
+    assert_eq!(
+        result
+            .get("primaryBucketCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    assert_eq!(
+        result
+            .get("primaryRemainPercent")
+            .and_then(|value| value.as_i64()),
+        Some(90)
+    );
+    assert_eq!(
+        result
+            .get("secondaryBucketCount")
+            .and_then(|value| value.as_i64()),
+        Some(2)
+    );
+    assert_eq!(
+        result
+            .get("secondaryRemainPercent")
+            .and_then(|value| value.as_i64()),
+        Some(70)
+    );
+}
+
+#[test]
 fn rpc_rejects_missing_token() {
     let _ctx = RpcTestContext::new("rpc-missing-token");
     let server = codexmanager_service::start_one_shot_server().expect("start server");

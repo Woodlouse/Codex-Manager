@@ -15,6 +15,7 @@ pub(crate) struct PassthroughSseCollector {
     pub(crate) usage: UpstreamResponseUsage,
     pub(crate) saw_terminal: bool,
     pub(crate) terminal_error: Option<String>,
+    pub(crate) upstream_error_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,5 +149,81 @@ pub(super) fn mark_collector_terminal_success(
     if let Ok(mut collector) = usage_collector.lock() {
         collector.saw_terminal = true;
         collector.terminal_error = None;
+    }
+}
+
+pub(super) fn stream_incomplete_message() -> String {
+    "上游流中途中断（未正常结束）".to_string()
+}
+
+pub(super) fn stream_reader_disconnected_message() -> String {
+    "上游流读取失败（连接中断）".to_string()
+}
+
+pub(super) fn classify_upstream_stream_read_error(raw: &str) -> String {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return "上游流读取失败".to_string();
+    }
+    if normalized.contains("timed out") || normalized.contains("timeout") {
+        return "上游请求超时".to_string();
+    }
+    if normalized.contains("broken pipe")
+        || normalized.contains("connection reset")
+        || normalized.contains("connection aborted")
+        || normalized.contains("forcibly closed")
+        || normalized.contains("unexpected eof")
+        || normalized.contains("early eof")
+    {
+        return "上游流读取失败（连接中断）".to_string();
+    }
+    if normalized.contains("request or response body error")
+        || normalized.contains("response body")
+        || normalized.contains("error decoding response body")
+        || normalized.contains("body error")
+    {
+        return "上游返回的不是正常接口数据，可能是验证页、拦截页或错误页".to_string();
+    }
+    "上游流读取失败".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        classify_upstream_stream_read_error, stream_incomplete_message,
+        stream_reader_disconnected_message,
+    };
+
+    #[test]
+    fn classify_upstream_stream_read_error_maps_body_error() {
+        assert_eq!(
+            classify_upstream_stream_read_error("request or response body error"),
+            "上游返回的不是正常接口数据，可能是验证页、拦截页或错误页"
+        );
+    }
+
+    #[test]
+    fn classify_upstream_stream_read_error_maps_disconnect() {
+        assert_eq!(
+            classify_upstream_stream_read_error("connection reset by peer"),
+            "上游流读取失败（连接中断）"
+        );
+    }
+
+    #[test]
+    fn classify_upstream_stream_read_error_maps_timeout() {
+        assert_eq!(
+            classify_upstream_stream_read_error("operation timed out"),
+            "上游请求超时"
+        );
+    }
+
+    #[test]
+    fn stream_terminal_messages_are_user_friendly() {
+        assert_eq!(stream_incomplete_message(), "上游流中途中断（未正常结束）");
+        assert_eq!(
+            stream_reader_disconnected_message(),
+            "上游流读取失败（连接中断）"
+        );
     }
 }

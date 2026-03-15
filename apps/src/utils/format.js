@@ -15,6 +15,9 @@ const COMPACT_NUMBER_UNITS = [
   { value: 1e6, suffix: "M" },
   { value: 1e3, suffix: "K" },
 ];
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+const ROUNDING_BIAS = 3;
 
 function formatDateTime(date) {
   return dateTimeFormatter.format(date);
@@ -76,11 +79,8 @@ export function formatCompactNumber(value, options = {}) {
 export function formatLimitLabel(windowMinutes, fallback) {
   if (windowMinutes == null) return fallback;
   const minutes = Math.max(0, windowMinutes);
-  const MINUTES_PER_HOUR = 60;
-  const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
   const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
   const MINUTES_PER_MONTH = 30 * MINUTES_PER_DAY;
-  const ROUNDING_BIAS = 3;
   if (minutes <= MINUTES_PER_DAY + ROUNDING_BIAS) {
     const hours = Math.max(
       1,
@@ -204,6 +204,120 @@ export function computeUsageStats(accounts, usageSource) {
     unavailableCount,
     lowCount,
   };
+}
+
+export function computeAggregateRemainingStats(accounts, usageSource) {
+  const usageMap = usageSource instanceof Map
+    ? usageSource
+    : new Map((usageSource || []).map((u) => [u.accountId, u]));
+  const accountList = Array.isArray(accounts) ? accounts : [];
+
+  let primaryBucketCount = 0;
+  let primaryKnownCount = 0;
+  let primaryRemainingTotal = 0;
+  let secondaryBucketCount = 0;
+  let secondaryKnownCount = 0;
+  let secondaryRemainingTotal = 0;
+
+  for (let i = 0; i < accountList.length; i += 1) {
+    const account = accountList[i];
+    const usage = usageMap.get(account?.id);
+    const hasPrimarySignal = usage?.usedPercent != null || usage?.windowMinutes != null;
+    const hasSecondarySignal =
+      usage?.secondaryUsedPercent != null || usage?.secondaryWindowMinutes != null;
+    const primaryRemain = remainingPercent(usage ? usage.usedPercent : null);
+    const primaryBelongsToSecondary = !hasSecondarySignal && (
+      isLongWindow(usage?.windowMinutes) || isFreePlanUsage(usage)
+    );
+    if (hasPrimarySignal) {
+      if (primaryBelongsToSecondary) {
+        secondaryBucketCount += 1;
+      } else {
+        primaryBucketCount += 1;
+      }
+    }
+    if (primaryRemain != null) {
+      if (primaryBelongsToSecondary) {
+        secondaryKnownCount += 1;
+        secondaryRemainingTotal += primaryRemain;
+      } else {
+        primaryKnownCount += 1;
+        primaryRemainingTotal += primaryRemain;
+      }
+    }
+    const secondaryRemain = remainingPercent(usage ? usage.secondaryUsedPercent : null);
+    if (hasSecondarySignal) {
+      secondaryBucketCount += 1;
+    }
+    if (secondaryRemain != null) {
+      secondaryKnownCount += 1;
+      secondaryRemainingTotal += secondaryRemain;
+    }
+  }
+
+  return {
+    totalAccounts: accountList.length,
+    primaryBucketCount,
+    primaryKnownCount,
+    primaryUnknownCount: Math.max(0, primaryBucketCount - primaryKnownCount),
+    primaryRemainPercent: primaryKnownCount > 0
+      ? Math.round(primaryRemainingTotal / primaryKnownCount)
+      : null,
+    secondaryBucketCount,
+    secondaryKnownCount,
+    secondaryUnknownCount: Math.max(0, secondaryBucketCount - secondaryKnownCount),
+    secondaryRemainPercent: secondaryKnownCount > 0
+      ? Math.round(secondaryRemainingTotal / secondaryKnownCount)
+      : null,
+  };
+}
+
+function isLongWindow(windowMinutes) {
+  const minutes = parseFiniteNumber(windowMinutes);
+  return minutes != null && minutes > MINUTES_PER_DAY + ROUNDING_BIAS;
+}
+
+function isFreePlanUsage(usage) {
+  const planType = extractPlanTypeFromCredits(usage?.creditsJson);
+  return typeof planType === "string" && planType.includes("free");
+}
+
+function extractPlanTypeFromCredits(raw) {
+  const value = parseCredits(raw);
+  return extractPlanTypeRecursive(value);
+}
+
+function extractPlanTypeRecursive(value) {
+  if (!value || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const nested = extractPlanTypeRecursive(value[i]);
+      if (nested) return nested;
+    }
+    return null;
+  }
+  const keys = [
+    "plan_type",
+    "planType",
+    "subscription_tier",
+    "subscriptionTier",
+    "tier",
+    "account_type",
+    "accountType",
+    "type",
+  ];
+  for (let i = 0; i < keys.length; i += 1) {
+    const candidate = value[keys[i]];
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim().toLowerCase();
+    }
+  }
+  const values = Object.values(value);
+  for (let i = 0; i < values.length; i += 1) {
+    const nested = extractPlanTypeRecursive(values[i]);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 export function parseCredits(raw) {

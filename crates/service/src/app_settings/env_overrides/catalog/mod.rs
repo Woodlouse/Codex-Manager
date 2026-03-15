@@ -40,10 +40,15 @@ pub(crate) fn env_override_unsupported_keys() -> &'static [&'static str] {
     APP_SETTINGS_ENV_UNSUPPORTED_KEYS
 }
 
-pub(super) fn env_override_catalog_item(key: &str) -> Option<&'static EnvOverrideCatalogItem> {
+pub(super) fn editable_env_override_catalog(
+) -> impl Iterator<Item = &'static EnvOverrideCatalogItem> {
     ENV_OVERRIDE_CATALOG
         .iter()
-        .find(|item| item.key.eq_ignore_ascii_case(key))
+        .filter(|item| !is_env_override_reserved_key(item.key))
+}
+
+pub(super) fn env_override_catalog_item(key: &str) -> Option<&'static EnvOverrideCatalogItem> {
+    editable_env_override_catalog().find(|item| item.key.eq_ignore_ascii_case(key))
 }
 
 pub(super) fn is_env_override_catalog_key(key: &str) -> bool {
@@ -63,8 +68,7 @@ pub(super) fn is_env_override_reserved_key(key: &str) -> bool {
 }
 
 pub(crate) fn env_override_catalog_value() -> Vec<Value> {
-    ENV_OVERRIDE_CATALOG
-        .iter()
+    editable_env_override_catalog()
         .map(|item| {
             serde_json::json!({
                 "key": item.key,

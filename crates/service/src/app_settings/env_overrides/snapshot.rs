@@ -11,7 +11,7 @@ pub(super) fn env_override_default_value(key: &str) -> String {
 
 pub(super) fn env_override_default_snapshot() -> BTreeMap<String, String> {
     let mut snapshot = BTreeMap::new();
-    for item in super::catalog::ENV_OVERRIDE_CATALOG.iter() {
+    for item in super::catalog::editable_env_override_catalog() {
         snapshot.insert(item.key.to_string(), env_override_default_value(item.key));
     }
     snapshot
@@ -27,6 +27,10 @@ fn persisted_env_overrides(mut normalized: BTreeMap<String, String>) -> BTreeMap
     };
 
     for (raw_key, raw_value) in parsed {
+        let normalized_key = raw_key.trim().to_ascii_uppercase();
+        if super::catalog::is_env_override_reserved_key(&normalized_key) {
+            continue;
+        }
         let Ok(key) = super::normalize::normalize_env_override_key(&raw_key) else {
             log::warn!(
                 "skip persisted env override: key={} invalid",
@@ -54,7 +58,12 @@ pub(crate) fn current_env_overrides() -> BTreeMap<String, String> {
 }
 
 pub(crate) fn save_env_overrides_value(overrides: &BTreeMap<String, String>) -> Result<(), String> {
-    let raw = serde_json::to_string(overrides)
+    let sanitized = overrides
+        .iter()
+        .filter(|(key, _)| !super::catalog::is_env_override_reserved_key(key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let raw = serde_json::to_string(&sanitized)
         .map_err(|err| format!("serialize env overrides failed: {err}"))?;
     super::save_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY, Some(&raw))
 }

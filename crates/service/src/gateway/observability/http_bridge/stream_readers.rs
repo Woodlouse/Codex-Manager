@@ -29,7 +29,9 @@ mod passthrough;
 
 pub(crate) use anthropic::AnthropicSseReader;
 use common::{
-    collector_output_text_trimmed, mark_collector_terminal_success, sse_keepalive_interval,
+    classify_upstream_stream_read_error, collector_output_text_trimmed,
+    mark_collector_terminal_success, sse_keepalive_interval, stream_incomplete_message,
+    stream_reader_disconnected_message,
 };
 pub(crate) use common::{
     PassthroughSseCollector, SseKeepAliveFrame, UpstreamSseFramePump, UpstreamSseFramePumpItem,

@@ -7,7 +7,6 @@ macro_rules! invoke_handler {
             crate::commands::service::service_initialize,
             crate::commands::service::service_rpc_token,
             crate::commands::startup::service_startup_snapshot,
-
             // account
             crate::commands::account::remote::service_account_list,
             crate::commands::account::remote::service_account_delete,
@@ -19,17 +18,15 @@ macro_rules! invoke_handler {
             crate::commands::account::transfer::service_account_import_by_directory,
             crate::commands::account::transfer::service_account_export_by_account_files,
             crate::commands::account::local::local_account_delete,
-
             // usage
             crate::commands::usage::service_usage_read,
             crate::commands::usage::service_usage_list,
+            crate::commands::usage::service_usage_aggregate,
             crate::commands::usage::service_usage_refresh,
-
             // request log
             crate::commands::requestlog::service_requestlog_list,
             crate::commands::requestlog::service_requestlog_clear,
             crate::commands::requestlog::service_requestlog_today_summary,
-
             // settings
             crate::commands::settings::service_listen::service_listen_config_get,
             crate::commands::settings::service_listen::service_listen_config_set,
@@ -50,25 +47,23 @@ macro_rules! invoke_handler {
             crate::commands::settings::ui::app_settings_set,
             crate::commands::settings::ui::app_close_to_tray_on_close_get,
             crate::commands::settings::ui::app_close_to_tray_on_close_set,
-
             // login
             crate::commands::login::service_login_start,
             crate::commands::login::service_login_status,
             crate::commands::login::service_login_complete,
-
             // api key
             crate::commands::apikey::service_apikey_list,
             crate::commands::apikey::service_apikey_read_secret,
             crate::commands::apikey::service_apikey_create,
             crate::commands::apikey::service_apikey_models,
+            crate::commands::apikey::service_apikey_usage_stats,
             crate::commands::apikey::service_apikey_update_model,
             crate::commands::apikey::service_apikey_delete,
             crate::commands::apikey::service_apikey_disable,
             crate::commands::apikey::service_apikey_enable,
-
             // system
             crate::commands::system::open_in_browser,
-
+            crate::commands::system::app_window_unsaved_draft_sections_set,
             // updater
             crate::commands::updater::app_update_check,
             crate::commands::updater::app_update_prepare,

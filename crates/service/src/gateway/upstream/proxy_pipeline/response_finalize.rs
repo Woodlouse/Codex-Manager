@@ -82,11 +82,7 @@ pub(super) fn finalize_upstream_response(
     started_at: std::time::Instant,
 ) -> Result<(), String> {
     let status_code = response.status().as_u16();
-    let mut final_error = if status_code >= 400 {
-        last_attempt_error.map(str::to_string)
-    } else {
-        None
-    };
+    let mut final_error = None;
 
     let bridge = super::super::super::respond_with_upstream(
         request,
@@ -117,31 +113,19 @@ pub(super) fn finalize_upstream_response(
         bridge.usage.output_tokens,
     );
 
-    let bridge_ok = bridge.is_ok(client_is_stream);
-    if !bridge_ok {
-        let bridge_error = bridge
-            .error_message(client_is_stream)
-            .unwrap_or_else(|| "upstream response incomplete".to_string());
-        match final_error.as_deref() {
-            Some(existing) if existing != bridge_error => {
-                final_error = Some(format!("{existing}; {bridge_error}"));
-            }
-            None => {
-                final_error = Some(bridge_error);
-            }
-            _ => {}
-        }
-    }
     if let Some(upstream_hint) = bridge.upstream_error_hint.as_deref() {
-        match final_error.as_deref() {
-            Some(existing) if existing.contains(upstream_hint) => {}
-            Some(existing) => {
-                final_error = Some(format!("{existing}; upstream_error={upstream_hint}"));
-            }
-            None => {
-                final_error = Some(format!("upstream_error={upstream_hint}"));
-            }
-        }
+        final_error = Some(upstream_hint.to_string());
+    } else if status_code >= 400 {
+        final_error = last_attempt_error.map(str::to_string);
+    }
+
+    let bridge_ok = bridge.is_ok(client_is_stream);
+    if final_error.is_none() && !bridge_ok {
+        final_error = Some(
+            bridge
+                .error_message(client_is_stream)
+                .unwrap_or_else(|| "upstream response incomplete".to_string()),
+        );
     }
 
     let upstream_stream_failed = client_is_stream

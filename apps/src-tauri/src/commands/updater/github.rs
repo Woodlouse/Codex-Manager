@@ -237,7 +237,9 @@ pub(super) fn fetch_latest_release(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_release_asset_url, parse_release_assets_from_html, select_release_for_channel};
+    use super::{
+        normalize_release_asset_url, parse_release_assets_from_html, select_release_for_channel,
+    };
     use crate::commands::updater::model::GitHubRelease;
 
     #[test]

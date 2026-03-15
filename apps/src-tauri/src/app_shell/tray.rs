@@ -4,7 +4,11 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 
 use crate::service_runtime::stop_service;
 
-use super::state::{APP_EXIT_REQUESTED, KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE, TRAY_AVAILABLE};
+use super::prompts::confirm_discard_unsaved_settings_for_app_exit;
+use super::state::{
+    has_unsaved_settings_draft_sections, mark_skip_next_unsaved_settings_exit_confirm,
+    APP_EXIT_REQUESTED, KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE, TRAY_AVAILABLE,
+};
 use super::window::show_main_window;
 
 const TRAY_MENU_SHOW_MAIN: &str = "tray_show_main";
@@ -32,9 +36,15 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
                 show_main_window(app);
             }
             TRAY_MENU_QUIT_APP => {
+                if has_unsaved_settings_draft_sections() {
+                    if !confirm_discard_unsaved_settings_for_app_exit() {
+                        log::info!("tray exit canceled because settings drafts are still unsaved");
+                        return;
+                    }
+                    mark_skip_next_unsaved_settings_exit_confirm();
+                }
                 APP_EXIT_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
-                KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, std::sync::atomic::Ordering::Relaxed);
                 stop_service();
                 app.exit(0);
             }

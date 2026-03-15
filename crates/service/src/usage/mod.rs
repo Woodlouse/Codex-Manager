@@ -1,5 +1,7 @@
 #[path = "usage_account_meta.rs"]
 pub(crate) mod account_meta;
+#[path = "usage_aggregate.rs"]
+pub(crate) mod aggregate;
 #[path = "usage_http.rs"]
 pub(crate) mod http;
 #[path = "usage_keepalive.rs"]

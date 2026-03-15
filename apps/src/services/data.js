@@ -10,6 +10,16 @@ const DEFAULT_REQUEST_LOG_TODAY_SUMMARY = {
   reasoningOutputTokens: 0,
   estimatedCost: 0,
 };
+const DEFAULT_USAGE_AGGREGATE_SUMMARY = {
+  primaryBucketCount: 0,
+  primaryKnownCount: 0,
+  primaryUnknownCount: 0,
+  primaryRemainPercent: null,
+  secondaryBucketCount: 0,
+  secondaryKnownCount: 0,
+  secondaryUnknownCount: 0,
+  secondaryRemainPercent: null,
+};
 
 function ensureRpcSuccess(result, fallbackMessage) {
   if (result && typeof result === "object" && typeof result.error === "string" && result.error) {
@@ -168,6 +178,48 @@ function normalizeRequestLogTodaySummary(res) {
   };
 }
 
+function normalizeUsageAggregateSummary(res) {
+  const source = res && typeof res === "object" ? res : {};
+  const primaryBucketCount = pickNumber(source, [
+    "primaryBucketCount",
+    "result.primaryBucketCount",
+  ], 0);
+  const primaryKnownCount = pickNumber(source, [
+    "primaryKnownCount",
+    "result.primaryKnownCount",
+  ], 0);
+  const primaryUnknownCount = pickNumber(source, [
+    "primaryUnknownCount",
+    "result.primaryUnknownCount",
+  ], Math.max(0, primaryBucketCount - primaryKnownCount));
+  const secondaryBucketCount = pickNumber(source, [
+    "secondaryBucketCount",
+    "result.secondaryBucketCount",
+  ], 0);
+  const secondaryKnownCount = pickNumber(source, [
+    "secondaryKnownCount",
+    "result.secondaryKnownCount",
+  ], 0);
+  const secondaryUnknownCount = pickNumber(source, [
+    "secondaryUnknownCount",
+    "result.secondaryUnknownCount",
+  ], Math.max(0, secondaryBucketCount - secondaryKnownCount));
+  const primaryRemainPercent = toFiniteNumber(readPath(source, "primaryRemainPercent"))
+    ?? toFiniteNumber(readPath(source, "result.primaryRemainPercent"));
+  const secondaryRemainPercent = toFiniteNumber(readPath(source, "secondaryRemainPercent"))
+    ?? toFiniteNumber(readPath(source, "result.secondaryRemainPercent"));
+  return {
+    primaryBucketCount: Math.max(0, Math.trunc(primaryBucketCount)),
+    primaryKnownCount: Math.max(0, Math.trunc(primaryKnownCount)),
+    primaryUnknownCount: Math.max(0, Math.trunc(primaryUnknownCount)),
+    primaryRemainPercent: primaryRemainPercent == null ? null : Math.max(0, Math.min(100, Math.round(primaryRemainPercent))),
+    secondaryBucketCount: Math.max(0, Math.trunc(secondaryBucketCount)),
+    secondaryKnownCount: Math.max(0, Math.trunc(secondaryKnownCount)),
+    secondaryUnknownCount: Math.max(0, Math.trunc(secondaryUnknownCount)),
+    secondaryRemainPercent: secondaryRemainPercent == null ? null : Math.max(0, Math.min(100, Math.round(secondaryRemainPercent))),
+  };
+}
+
 // 刷新账号列表
 export async function refreshAccounts() {
   const res = ensureRpcSuccess(await api.serviceAccountList(), "读取账号列表失败");
@@ -236,6 +288,21 @@ export async function refreshUsageList(options = {}) {
   }
   const res = ensureRpcSuccess(await api.serviceUsageList(), "读取用量列表失败");
   state.usageList = Array.isArray(res.items) ? res.items : [];
+}
+
+export async function refreshUsageAggregateSummary() {
+  try {
+    const res = ensureRpcSuccess(
+      await api.serviceUsageAggregate(),
+      "读取账号池总剩余失败",
+    );
+    state.usageAggregateSummary = normalizeUsageAggregateSummary(res);
+  } catch (err) {
+    if (!isCommandMissingError(err)) {
+      throw err;
+    }
+    state.usageAggregateSummary = { ...DEFAULT_USAGE_AGGREGATE_SUMMARY };
+  }
 }
 
 // 刷新 API Key 列表
@@ -328,6 +395,9 @@ export async function hydrateFromStartupSnapshot(options = {}) {
 
   state.accountList = Array.isArray(res.accounts) ? res.accounts : [];
   state.usageList = Array.isArray(res.usageSnapshots) ? res.usageSnapshots : [];
+  state.usageAggregateSummary = normalizeUsageAggregateSummary(
+    res.usageAggregateSummary || DEFAULT_USAGE_AGGREGATE_SUMMARY,
+  );
   state.apiKeyList = Array.isArray(res.apiKeys) ? res.apiKeys : [];
   state.apiModelOptions = Array.isArray(res.apiModelOptions) ? res.apiModelOptions : [];
   state.manualPreferredAccountId = String(res.manualPreferredAccountId || "").trim();

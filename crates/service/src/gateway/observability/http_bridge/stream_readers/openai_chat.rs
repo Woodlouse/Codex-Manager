@@ -1,11 +1,13 @@
 use super::{
     apply_openai_stream_meta_defaults, build_chat_fallback_content_chunk,
-    collector_output_text_trimmed, convert_openai_chat_stream_chunk_with_tool_name_restore_map,
+    classify_upstream_stream_read_error, collector_output_text_trimmed,
+    convert_openai_chat_stream_chunk_with_tool_name_restore_map,
     extract_openai_completed_output_text, extract_sse_frame_payload, inspect_sse_frame,
     is_response_completed_event_name, map_chunk_has_chat_text, mark_collector_terminal_success,
     merge_usage, normalize_chat_chunk_delta_role, parse_sse_frame_json,
-    should_skip_chat_live_text_event, sse_keepalive_interval, update_openai_stream_meta, Arc,
-    Cursor, Mutex, OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal,
+    should_skip_chat_live_text_event, sse_keepalive_interval, stream_incomplete_message,
+    stream_reader_disconnected_message, update_openai_stream_meta, Arc, Cursor, Mutex,
+    OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal,
     ToolNameRestoreMap, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
 
@@ -161,9 +163,9 @@ impl OpenAIChatCompletionsSseReader {
                         if !collector.saw_terminal {
                             // 中文注释：对齐最新 Codex SSE 语义：
                             // 只有 response.completed / response.done / [DONE] 才算正常结束。
-                            collector.terminal_error.get_or_insert_with(|| {
-                                "stream disconnected before completion".to_string()
-                            });
+                            collector
+                                .terminal_error
+                                .get_or_insert_with(stream_incomplete_message);
                         }
                     }
                     self.finished = true;
@@ -173,7 +175,7 @@ impl OpenAIChatCompletionsSseReader {
                     if let Ok(mut collector) = self.usage_collector.lock() {
                         collector
                             .terminal_error
-                            .get_or_insert_with(|| format!("stream read failed: {err}"));
+                            .get_or_insert_with(|| classify_upstream_stream_read_error(&err));
                     }
                     self.finished = true;
                     return Ok(Vec::new());
@@ -183,9 +185,9 @@ impl OpenAIChatCompletionsSseReader {
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     if let Ok(mut collector) = self.usage_collector.lock() {
-                        collector.terminal_error.get_or_insert_with(|| {
-                            "stream reader disconnected unexpectedly".to_string()
-                        });
+                        collector
+                            .terminal_error
+                            .get_or_insert_with(stream_reader_disconnected_message);
                     }
                     self.finished = true;
                     return Ok(Vec::new());

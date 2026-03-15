@@ -24,7 +24,7 @@ pub(crate) fn set_env_overrides(
         }
     }
 
-    for item in super::catalog::ENV_OVERRIDE_CATALOG.iter() {
+    for item in super::catalog::editable_env_override_catalog() {
         next.entry(item.key.to_string())
             .or_insert_with(|| super::snapshot::env_override_default_value(item.key));
     }

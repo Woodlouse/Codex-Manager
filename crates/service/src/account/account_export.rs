@@ -1,4 +1,4 @@
-use codexmanager_core::storage::{now_ts, Account};
+use codexmanager_core::storage::{now_ts, Account, Token};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,22 @@ pub(crate) struct AccountExportResult {
     exported: usize,
     skipped_missing_token: usize,
     files: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccountExportDataResult {
+    total_accounts: usize,
+    exported: usize,
+    skipped_missing_token: usize,
+    files: Vec<ExportAccountFile>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportAccountFile {
+    file_name: String,
+    content: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,28 +90,9 @@ pub(crate) fn export_accounts_to_directory(
             continue;
         };
 
-        let payload = ExportAccountPayload {
-            tokens: ExportTokensPayload {
-                access_token: token.access_token,
-                id_token: token.id_token,
-                refresh_token: token.refresh_token,
-                account_id: account.id.clone(),
-            },
-            meta: ExportMetaPayload {
-                label: account.label.clone(),
-                issuer: account.issuer.clone(),
-                group_name: account.group_name.clone(),
-                status: account.status.clone(),
-                workspace_id: account.workspace_id.clone(),
-                chatgpt_account_id: account.chatgpt_account_id.clone(),
-                exported_at: now_ts(),
-            },
-        };
-
         let file_path =
             build_account_export_file_path(&output_path, &account, &mut file_name_counter);
-        let json = serde_json::to_vec_pretty(&payload)
-            .map_err(|err| format!("encode export json failed: {err}"))?;
+        let json = build_account_export_json(&account, &token)?;
         std::fs::write(&file_path, json)
             .map_err(|err| format!("write export file failed ({}): {err}", file_path.display()))?;
 
@@ -105,6 +102,46 @@ pub(crate) fn export_accounts_to_directory(
 
     Ok(AccountExportResult {
         output_dir: output_path.display().to_string(),
+        total_accounts,
+        exported,
+        skipped_missing_token,
+        files,
+    })
+}
+
+pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> {
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
+    let total_accounts = accounts.len();
+    let mut exported = 0usize;
+    let mut skipped_missing_token = 0usize;
+    let mut files = Vec::new();
+    let mut file_name_counter: HashMap<String, usize> = HashMap::new();
+
+    for account in accounts {
+        let token = storage
+            .find_token_by_account_id(&account.id)
+            .map_err(|err| err.to_string())?;
+        let Some(token) = token else {
+            skipped_missing_token += 1;
+            continue;
+        };
+
+        let file_path =
+            build_account_export_file_path(Path::new(""), &account, &mut file_name_counter);
+        let file_name = file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(str::to_string)
+            .ok_or_else(|| "build export file name failed".to_string())?;
+        let json = build_account_export_json(&account, &token)?;
+        let content =
+            String::from_utf8(json).map_err(|err| format!("encode export utf8 failed: {err}"))?;
+        files.push(ExportAccountFile { file_name, content });
+        exported += 1;
+    }
+
+    Ok(AccountExportDataResult {
         total_accounts,
         exported,
         skipped_missing_token,
@@ -139,6 +176,27 @@ fn build_account_export_file_path(
     *sequence += 1;
 
     output_dir.join(format!("{file_stem}.json"))
+}
+
+fn build_account_export_json(account: &Account, token: &Token) -> Result<Vec<u8>, String> {
+    let payload = ExportAccountPayload {
+        tokens: ExportTokensPayload {
+            access_token: token.access_token.clone(),
+            id_token: token.id_token.clone(),
+            refresh_token: token.refresh_token.clone(),
+            account_id: account.id.clone(),
+        },
+        meta: ExportMetaPayload {
+            label: account.label.clone(),
+            issuer: account.issuer.clone(),
+            group_name: account.group_name.clone(),
+            status: account.status.clone(),
+            workspace_id: account.workspace_id.clone(),
+            chatgpt_account_id: account.chatgpt_account_id.clone(),
+            exported_at: now_ts(),
+        },
+    };
+    serde_json::to_vec_pretty(&payload).map_err(|err| format!("encode export json failed: {err}"))
 }
 
 fn sanitize_file_stem(value: &str) -> String {
